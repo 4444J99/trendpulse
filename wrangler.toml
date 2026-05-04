@@ -23,7 +23,7 @@ binding = "TP_DIGEST"
 id = "26ecf9dc427a403782afceb401958a96"
 
 [vars]
-USER_AGENT = "TrendPulse research bot"
+USER_AGENT = "Mozilla/5.0 (compatible; TrendPulse/0.1; +https://trendpulse.ivixivi.workers.dev)"
 
 [observability]
 enabled = true

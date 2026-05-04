@@ -91,45 +91,49 @@ async function fetchGithubTrending(env: Env): Promise<Item[]> {
 }
 
 async function fetchArxiv(env: Env): Promise<Item[]> {
-  // Atom feed — light parse
-  const r = await fetch('https://export.arxiv.org/rss/cs.AI', {
-    headers: { 'User-Agent': env.USER_AGENT, 'Accept': 'application/rss+xml' },
+  // Use the query API instead of the daily RSS (which is empty on weekends).
+  const url = 'https://export.arxiv.org/api/query?search_query=cat:cs.AI&start=0&max_results=25&sortBy=submittedDate&sortOrder=descending';
+  const r = await fetch(url, {
+    headers: { 'User-Agent': env.USER_AGENT, 'Accept': 'application/atom+xml' },
   });
   if (!r.ok) return [];
   const xml = await r.text();
   const out: Item[] = [];
-  const items = xml.split('<item>').slice(1, 31);
-  for (const e of items) {
-    const closeIdx = e.indexOf('</item>');
+  const entries = xml.split('<entry>').slice(1, 26);
+  for (const e of entries) {
+    const closeIdx = e.indexOf('</entry>');
     if (closeIdx < 0) continue;
     const block = e.slice(0, closeIdx);
-    const title = match(block, /<title>([\s\S]*?)<\/title>/)?.replace(/<!\[CDATA\[|\]\]>/g, '').trim();
-    const link = match(block, /<link>([^<]+)<\/link>/);
-    const desc = match(block, /<description>([\s\S]*?)<\/description>/)?.replace(/<!\[CDATA\[|\]\]>/g, '').replace(/<[^>]+>/g, ' ').slice(0, 400).trim();
+    const title = match(block, /<title>([\s\S]*?)<\/title>/)?.replace(/\s+/g, ' ').trim();
+    const link = match(block, /<id>([^<]+)<\/id>/);
+    const summaryRaw = match(block, /<summary>([\s\S]*?)<\/summary>/)?.replace(/\s+/g, ' ').trim();
     if (!title || !link) continue;
-    out.push({ source: 'arxiv', title, url: link, summary: desc, collected_at: new Date().toISOString() });
+    out.push({ source: 'arxiv', title, url: link, summary: summaryRaw?.slice(0, 400), collected_at: new Date().toISOString() });
   }
   return out;
 }
 
 async function fetchReddit(env: Env, sub: string, source: Source): Promise<Item[]> {
-  const r = await fetch(`https://www.reddit.com/r/${sub}/top.json?t=day&limit=25`, {
-    headers: { 'User-Agent': env.USER_AGENT },
+  // Reddit JSON API blocks Cloudflare IPs. Use RSS feed which is more open.
+  const r = await fetch(`https://www.reddit.com/r/${sub}/top/.rss?t=day&limit=25`, {
+    headers: {
+      'User-Agent': env.USER_AGENT,
+      'Accept': 'application/rss+xml,application/atom+xml',
+    },
   });
   if (!r.ok) return [];
-  const data: any = await r.json();
+  const xml = await r.text();
   const out: Item[] = [];
-  for (const post of data?.data?.children ?? []) {
-    const p = post.data;
-    if (!p?.title) continue;
-    out.push({
-      source,
-      title: String(p.title),
-      url: `https://reddit.com${p.permalink}`,
-      score: Number(p.score ?? 0),
-      comments: Number(p.num_comments ?? 0),
-      collected_at: new Date().toISOString(),
-    });
+  // Reddit RSS uses Atom <entry> blocks
+  const entries = xml.split('<entry>').slice(1, 26);
+  for (const e of entries) {
+    const closeIdx = e.indexOf('</entry>');
+    if (closeIdx < 0) continue;
+    const block = e.slice(0, closeIdx);
+    const title = match(block, /<title>([\s\S]*?)<\/title>/)?.replace(/<!\[CDATA\[|\]\]>/g, '').trim();
+    const link = match(block, /<link[^>]+href="([^"]+)"/);
+    if (!title || !link) continue;
+    out.push({ source, title, url: link, collected_at: new Date().toISOString() });
   }
   return out;
 }
