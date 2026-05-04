@@ -1,0 +1,29 @@
+name = "trendpulse"
+main = "src/index.ts"
+compatibility_date = "2026-04-01"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "public"
+binding = "ASSETS"
+
+[ai]
+binding = "AI"
+
+# Daily digest at 13:00 UTC; intra-day collection every 4 hours
+[triggers]
+crons = ["0 1,5,9,13,17,21 * * *"]
+
+[[kv_namespaces]]
+binding = "TP_DATA"
+id = "18dae05eabbf4d008821c92f21dda75f"
+
+[[kv_namespaces]]
+binding = "TP_DIGEST"
+id = "26ecf9dc427a403782afceb401958a96"
+
+[vars]
+USER_AGENT = "TrendPulse research bot"
+
+[observability]
+enabled = true
