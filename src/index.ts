@@ -181,7 +181,13 @@ function tryParseJson(s: unknown): any | null {
   if (s == null) return null;
   if (typeof s === 'object') return s;
   const str = typeof s === 'string' ? s : String(s);
-  const cleaned = str.replace(/^```json\s*|\s*```$/g, '').trim();
+  // Strip code fences and any text before/after JSON object boundaries.
+  let cleaned = str.replace(/^```json\s*|\s*```$/g, '').trim();
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+  }
   try { return JSON.parse(cleaned); } catch { return null; }
 }
 
@@ -200,10 +206,9 @@ async function synthesizeDigest(items: Record<string, Item[]>, env: Env): Promis
     aiResp = await env.AI.run('@cf/meta/llama-3.3-70b-instruct-fp8-fast', {
       messages: [
         { role: 'system', content: DIGEST_SYSTEM },
-        { role: 'user', content: `Titles from the last 24h:\n\n${corpus}\n\nRespond with the JSON object only.` },
+        { role: 'user', content: `Titles from the last 24h:\n\n${corpus}\n\nRespond with the JSON object only, starting with { and ending with }.` },
       ],
-      max_tokens: 1500,
-      response_format: { type: 'json_object' },
+      max_tokens: 2000,
     });
   } catch (err) {
     console.error('digest inference failed:', err);
