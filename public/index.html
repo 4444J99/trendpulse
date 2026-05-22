@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TrendPulse — daily AI-curated digest of what's emerging across HN, GitHub, arxiv, Reddit</title>
+<meta name="description" content="What's hot today across Hacker News, GitHub trending, arxiv, and Reddit. Cross-cutting themes identified by AI. Free web feed; paid API + email.">
+<style>
+:root { --bg:#0b0c10; --fg:#eef0f3; --muted:#8a96a8; --accent:#22c55e; --rising:#22c55e; --steady:#a78bfa; --spike:#ef4444; --card:#13161e; --border:#1f2733; }
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--fg);font-family:-apple-system,system-ui,sans-serif;line-height:1.6;padding:32px 16px;max-width:760px;margin:0 auto;font-size:16px}
+header{text-align:center;padding:20px 0 28px}
+h1{font-size:42px;letter-spacing:-0.03em}
+h1 .pulse{color:var(--accent)}
+.tag{color:var(--muted);font-size:18px;margin-top:6px}
+section{margin:32px 0}
+h2{font-size:22px;margin-bottom:12px}
+.headline{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:18px;font-size:18px;line-height:1.4}
+.theme{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:14px;margin:10px 0}
+.theme h3{font-size:16px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
+.signal{display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:700;text-transform:uppercase}
+.signal.rising{background:var(--rising);color:#000}
+.signal.steady{background:var(--steady);color:#fff}
+.signal.spike{background:var(--spike);color:#fff}
+.theme p{color:var(--muted);font-size:14px;margin:6px 0}
+.titles{font-size:13px;color:var(--muted);font-family:ui-monospace,monospace;background:#0a0c10;padding:10px;border-radius:4px;border-left:2px solid var(--accent);margin-top:6px}
+.titles div{padding:3px 0}
+.meta{color:var(--muted);font-size:13px;display:flex;justify-content:space-between;margin-top:14px}
+.code{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:12px;font-family:ui-monospace,monospace;font-size:13px;white-space:pre;overflow-x:auto}
+.pricing{display:grid;gap:14px;grid-template-columns:1fr 1fr 1fr}
+@media(max-width:600px){.pricing{grid-template-columns:1fr}}
+.tier{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px}
+.tier h3{font-size:16px}
+.tier .price{font-size:24px;font-weight:700;margin:6px 0}
+.tier ul{list-style:none;font-size:13px;color:var(--muted)}
+.tier li{padding:2px 0}
+.tier li::before{content:"→ ";color:var(--accent)}
+button{background:var(--accent);color:#000;border:0;padding:10px 18px;border-radius:6px;font-weight:600;cursor:pointer;font-size:14px}
+button:hover{filter:brightness(1.1)}
+footer{text-align:center;color:var(--muted);font-size:13px;border-top:1px solid var(--border);padding-top:14px;margin-top:36px}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Trend<span class="pulse">Pulse</span></h1>
+  <p class="tag">What's emerging across HN, GitHub, arxiv, Reddit. Synthesized daily by AI.</p>
+</header>
+
+<section>
+  <h2>Today's pulse</h2>
+  <div id="latest" class="headline">loading…</div>
+  <div class="meta"><span id="generated-at">—</span><button onclick="runNow()" id="run-btn">Run now</button></div>
+</section>
+
+<section>
+  <h2>API</h2>
+  <p><code>GET /api/digest/latest</code> — the most recent digest as JSON</p>
+  <p><code>GET /api/digest/history</code> — last 30 daily digests</p>
+  <p><code>POST /api/run-now</code> — trigger collection now (30-min rate limit)</p>
+  <p><code>GET /api/status</code> — system health</p>
+</section>
+
+<section>
+  <h2>Pricing</h2>
+  <div class="pricing">
+    <div class="tier">
+      <h3>Free</h3>
+      <div class="price">$0</div>
+      <ul>
+        <li>Web feed (this page)</li>
+        <li>Daily digest only</li>
+        <li>Public API endpoints</li>
+      </ul>
+    </div>
+    <div class="tier">
+      <h3>Pro</h3>
+      <div class="price">$29 <small style="font-size:13px;color:var(--muted)">/ mo</small></div>
+      <ul>
+        <li>Daily email at 09:00</li>
+        <li>Custom theme filters</li>
+        <li>Source weighting</li>
+        <li>Historical search</li>
+      </ul>
+    </div>
+    <div class="tier">
+      <h3>Team</h3>
+      <div class="price">$99 <small style="font-size:13px;color:var(--muted)">/ mo</small></div>
+      <ul>
+        <li>Everything in Pro</li>
+        <li>5 seats</li>
+        <li>Webhook delivery</li>
+        <li>Custom source list</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>For who</h2>
+  <p style="color:var(--muted);font-size:14px">Founders deciding what to build next. VCs scanning for emerging categories. Researchers tracking field movement. Anyone who reads HN every morning anyway and would prefer the synthesized version.</p>
+</section>
+
+<footer>
+  <p>TrendPulse • <a href="/api/digest/latest">latest API</a> • Sources: HN, GitHub, arxiv cs.AI, Reddit /r/MachineLearning + /r/programming</p>
+  <p style="margin-top:10px">Sister products:</p>
+  <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:6px">
+    <a style="background:var(--card);border:1px solid var(--border);padding:4px 10px;border-radius:14px;font-size:12px;text-decoration:none" href="https://promptscope.ivixivi.workers.dev">PromptScope</a>
+    <a style="background:var(--card);border:1px solid var(--border);padding:4px 10px;border-radius:14px;font-size:12px;text-decoration:none" href="https://edgarflash.ivixivi.workers.dev">EdgarFlash</a>
+    <a style="background:var(--card);border:1px solid var(--border);padding:4px 10px;border-radius:14px;font-size:12px;text-decoration:none" href="https://writelens.ivixivi.workers.dev">WriteLens</a>
+    <a style="background:var(--card);border:1px solid var(--border);padding:4px 10px;border-radius:14px;font-size:12px;text-decoration:none" href="https://bountyscope.ivixivi.workers.dev">BountyScope</a>
+    <a style="background:var(--card);border:1px solid var(--border);padding:4px 10px;border-radius:14px;font-size:12px;text-decoration:none" href="https://vulnpulse.ivixivi.workers.dev">VulnPulse</a>
+  </div>
+</footer>
+
+<script>
+async function loadLatest() {
+  try {
+    const r = await fetch('/api/digest/latest');
+    const d = await r.json();
+    if (d.message) {
+      document.getElementById('latest').innerHTML = `<em>${escapeHtml(d.message)}</em>`;
+      document.getElementById('generated-at').textContent = '';
+      return;
+    }
+    let html = `<strong>${escapeHtml(d.one_line || '(no headline)')}</strong>`;
+    for (const t of (d.themes || [])) {
+      const sig = (t.signal_strength || 'steady').toLowerCase();
+      const titles = (t.example_titles || []).map(x => `<div>• ${escapeHtml(x)}</div>`).join('');
+      html += `<div class="theme">
+        <h3>${escapeHtml(t.name)} <span class="signal ${sig}">${escapeHtml(sig)}</span></h3>
+        <p>${escapeHtml(t.rationale || '')}</p>
+        ${titles ? `<div class="titles">${titles}</div>` : ''}
+      </div>`;
+    }
+    document.getElementById('latest').innerHTML = html;
+    document.getElementById('generated-at').textContent = `Generated ${escapeHtml(d.generated_at || '')} • ${escapeHtml(JSON.stringify(d.source_counts || {}))}`;
+  } catch (e) {
+    document.getElementById('latest').textContent = 'feed unavailable';
+  }
+}
+
+async function runNow() {
+  const btn = document.getElementById('run-btn');
+  btn.disabled = true; btn.textContent = 'collecting…';
+  try {
+    const r = await fetch('/api/run-now', { method: 'POST' });
+    const d = await r.json();
+    if (!r.ok) { alert(d.error || 'failed'); return; }
+    await loadLatest();
+  } finally {
+    btn.disabled = false; btn.textContent = 'Run now';
+  }
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+loadLatest();
+</script>
+
+</body>
+</html>
