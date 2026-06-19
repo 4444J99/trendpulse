@@ -24,6 +24,17 @@ id = "26ecf9dc427a403782afceb401958a96"
 
 [vars]
 USER_AGENT = "Mozilla/5.0 (compatible; TrendPulse/0.1; +https://trendpulse.ivixivi.workers.dev)"
+# Public Lemon Squeezy checkout link for the Pro/Team subscription. Surfaced to
+# the landing page via /api/config. Replace with your store's buy URL, e.g.
+# https://trendpulse.lemonsqueezy.com/buy/<variant-uuid>
+CHECKOUT_URL = "https://trendpulse.lemonsqueezy.com/buy/REPLACE-WITH-VARIANT-ID"
+# Optional: From address for email delivery (used only if RESEND_API_KEY is set).
+# FROM_EMAIL = "TrendPulse <digest@yourdomain.com>"
+
+# --- Secrets (set with `wrangler secret put`, do NOT commit) ---
+# RESEND_API_KEY — enables email delivery for subscribers. Webhook delivery
+#                  works without it. License validation needs no secret (the
+#                  Lemon Squeezy license key itself is the credential).
 
 [observability]
 enabled = true

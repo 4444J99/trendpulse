@@ -39,6 +39,22 @@ button{background:var(--accent);color:#000;border:0;padding:10px 18px;border-rad
 button:hover{filter:brightness(1.1)}
 footer{text-align:center;color:var(--muted);font-size:13px;border-top:1px solid var(--border);padding-top:14px;margin-top:36px}
 a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+.subscribe{display:inline-block;margin-top:10px;background:var(--accent);color:#000;padding:7px 14px;border-radius:6px;font-weight:600;font-size:13px}
+.subscribe:hover{filter:brightness(1.1);text-decoration:none}
+.panel{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:16px;margin-top:12px}
+.panel.locked{opacity:.55}
+label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
+input[type=text],input[type=email],input[type=url]{width:100%;background:#0a0c10;border:1px solid var(--border);border-radius:6px;color:var(--fg);padding:9px 10px;font-size:14px;font-family:inherit}
+input::placeholder{color:#5a6678}
+.srcrow{display:flex;flex-wrap:wrap;gap:10px;font-size:13px;color:var(--fg);margin-top:4px}
+.srcrow label{display:inline-flex;align-items:center;gap:5px;margin:0;color:var(--fg)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:10px}
+.note{font-size:12px;color:var(--muted);margin-top:8px}
+.badge{display:inline-block;background:var(--rising);color:#000;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;text-transform:uppercase}
+.badge.free{background:var(--border);color:var(--muted)}
+.status-msg{font-size:13px;margin-top:8px}
+.status-msg.err{color:var(--spike)}
+.status-msg.ok{color:var(--accent)}
 </style>
 </head>
 <body>
@@ -83,6 +99,7 @@ a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
         <li>Source weighting</li>
         <li>Historical search</li>
       </ul>
+      <a class="subscribe" id="buy-pro" href="#premium" style="display:none">Subscribe →</a>
     </div>
     <div class="tier">
       <h3>Team</h3>
@@ -93,7 +110,53 @@ a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
         <li>Webhook delivery</li>
         <li>Custom source list</li>
       </ul>
+      <a class="subscribe" id="buy-team" href="#premium" style="display:none">Subscribe →</a>
     </div>
+  </div>
+</section>
+
+<section id="premium">
+  <h2>Premium <span id="tier-badge" class="badge free">free</span></h2>
+  <p style="color:var(--muted);font-size:14px">Custom filtering and custom delivery are part of a paid subscription. The standard daily digest above stays free forever.</p>
+
+  <div class="panel" id="unlock-panel">
+    <label for="license-key">Lemon Squeezy license key</label>
+    <div class="row">
+      <input type="text" id="license-key" placeholder="paste your key after subscribing" style="flex:1;min-width:220px">
+      <button onclick="unlock()" id="unlock-btn">Unlock</button>
+      <a class="subscribe" id="buy-link" href="#" style="display:none" target="_blank" rel="noopener">Subscribe →</a>
+    </div>
+    <div id="unlock-msg" class="status-msg"></div>
+    <p class="note">After subscribing on Lemon Squeezy you'll receive a license key. Paste it here — it's stored only in this browser.</p>
+  </div>
+
+  <div class="panel locked" id="filter-panel">
+    <h3 style="font-size:16px">Custom filtering <span class="badge">pro</span></h3>
+    <label for="kw">Keywords (comma-separated — themes are weighted toward these)</label>
+    <input type="text" id="kw" placeholder="agents, inference, open weights" disabled>
+    <label>Sources</label>
+    <div class="srcrow" id="src-row"></div>
+    <div class="row">
+      <button onclick="getCustom()" id="custom-btn" disabled>Get custom digest</button>
+    </div>
+    <div id="custom-msg" class="status-msg"></div>
+    <div id="custom-out"></div>
+  </div>
+
+  <div class="panel locked" id="delivery-panel">
+    <h3 style="font-size:16px">Custom delivery <span class="badge">pro</span> / <span class="badge">team</span></h3>
+    <p class="note" style="margin-top:0">Each new digest is pushed to your target(s), respecting the filters above.</p>
+    <label for="del-email">Email <span id="email-avail" style="color:var(--muted)"></span></label>
+    <input type="email" id="del-email" placeholder="you@company.com" disabled>
+    <label for="del-webhook">Webhook URL <span style="color:var(--muted)">(Team)</span></label>
+    <input type="url" id="del-webhook" placeholder="https://hooks.example.com/trendpulse" disabled>
+    <label for="del-secret">Webhook signing secret <span style="color:var(--muted)">(optional — HMAC-SHA256)</span></label>
+    <input type="text" id="del-secret" placeholder="optional" disabled>
+    <div class="row">
+      <button onclick="saveDelivery()" id="del-save" disabled>Save delivery</button>
+      <button onclick="removeDelivery()" id="del-remove" disabled style="background:var(--spike);color:#fff">Remove</button>
+    </div>
+    <div id="del-msg" class="status-msg"></div>
   </div>
 </section>
 
@@ -158,7 +221,187 @@ function escapeHtml(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+// === Premium ===
+const SOURCES = [
+  ['hn', 'Hacker News'], ['github', 'GitHub'], ['arxiv', 'arxiv'],
+  ['reddit-ml', 'r/ML'], ['reddit-prog', 'r/programming'],
+];
+let CONFIG = { checkout_url: null, premium_enabled: false, email_delivery: false };
+let currentTier = 'free';
+
+function getKey() { return localStorage.getItem('tp_license') || ''; }
+function setKey(k) { k ? localStorage.setItem('tp_license', k) : localStorage.removeItem('tp_license'); }
+
+async function loadConfig() {
+  try { CONFIG = await (await fetch('/api/config')).json(); } catch {}
+  // Render source checkboxes.
+  document.getElementById('src-row').innerHTML = SOURCES.map(([v, lbl]) =>
+    `<label><input type="checkbox" class="src-cb" value="${v}" checked disabled> ${lbl}</label>`).join('');
+  // Wire checkout links.
+  const url = CONFIG.checkout_url;
+  for (const id of ['buy-pro', 'buy-team', 'buy-link']) {
+    const el = document.getElementById(id);
+    if (url) { el.href = url; el.style.display = ''; }
+  }
+  document.getElementById('email-avail').textContent =
+    CONFIG.email_delivery ? '' : '(not enabled on this instance — use webhook)';
+}
+
+function setLockState(unlocked, tier) {
+  currentTier = tier || 'free';
+  const badge = document.getElementById('tier-badge');
+  badge.textContent = currentTier;
+  badge.className = 'badge' + (unlocked ? '' : ' free');
+  for (const pid of ['filter-panel', 'delivery-panel']) {
+    document.getElementById(pid).classList.toggle('locked', !unlocked);
+  }
+  const ctrls = ['kw', 'custom-btn', 'del-email', 'del-secret', 'del-save', 'del-remove'];
+  for (const id of ctrls) document.getElementById(id).disabled = !unlocked;
+  document.querySelectorAll('.src-cb').forEach(cb => cb.disabled = !unlocked);
+  // Webhook is Team-only.
+  document.getElementById('del-webhook').disabled = !(unlocked && tier === 'team');
+}
+
+async function unlock() {
+  const key = document.getElementById('license-key').value.trim();
+  const msg = document.getElementById('unlock-msg');
+  const btn = document.getElementById('unlock-btn');
+  if (!key) { msg.className = 'status-msg err'; msg.textContent = 'enter a license key'; return; }
+  btn.disabled = true; btn.textContent = 'checking…';
+  try {
+    const r = await fetch('/api/license/check', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ license_key: key }),
+    });
+    const d = await r.json();
+    if (d.valid) {
+      setKey(key);
+      setLockState(true, d.tier);
+      msg.className = 'status-msg ok';
+      msg.textContent = `Unlocked — ${d.tier} tier${d.expires_at ? ', renews ' + d.expires_at : ''}.`;
+      loadDelivery();
+    } else {
+      setLockState(false, 'free');
+      msg.className = 'status-msg err';
+      msg.textContent = d.error || `license ${d.status || 'invalid'}`;
+    }
+  } catch (e) {
+    msg.className = 'status-msg err'; msg.textContent = 'check failed';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Unlock';
+  }
+}
+
+function selectedSources() {
+  return [...document.querySelectorAll('.src-cb:checked')].map(cb => cb.value);
+}
+
+async function getCustom() {
+  const key = getKey();
+  const msg = document.getElementById('custom-msg');
+  const out = document.getElementById('custom-out');
+  const btn = document.getElementById('custom-btn');
+  const kw = document.getElementById('kw').value.trim();
+  const srcs = selectedSources();
+  btn.disabled = true; btn.textContent = 'synthesizing…';
+  msg.textContent = ''; out.innerHTML = '';
+  try {
+    const qs = new URLSearchParams({ key });
+    if (kw) qs.set('keywords', kw);
+    if (srcs.length && srcs.length < SOURCES.length) qs.set('sources', srcs.join(','));
+    const r = await fetch('/api/digest/custom?' + qs.toString());
+    const d = await r.json();
+    if (!r.ok) { msg.className = 'status-msg err'; msg.textContent = d.detail || d.error || 'failed'; return; }
+    let html = `<div class="headline" style="margin-top:10px"><strong>${escapeHtml(d.one_line || '(no headline)')}</strong></div>`;
+    for (const t of (d.themes || [])) {
+      const sig = (t.signal_strength || 'steady').toLowerCase();
+      const titles = (t.example_titles || []).map(x => `<div>• ${escapeHtml(x)}</div>`).join('');
+      html += `<div class="theme"><h3>${escapeHtml(t.name)} <span class="signal ${sig}">${escapeHtml(sig)}</span></h3>
+        <p>${escapeHtml(t.rationale || '')}</p>${titles ? `<div class="titles">${titles}</div>` : ''}</div>`;
+    }
+    out.innerHTML = html;
+    msg.className = 'status-msg ok';
+    msg.textContent = `${d.matched ?? 0} items matched your filters.`;
+  } catch (e) {
+    msg.className = 'status-msg err'; msg.textContent = 'request failed';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Get custom digest';
+  }
+}
+
+async function loadDelivery() {
+  const key = getKey();
+  if (!key) return;
+  try {
+    const r = await fetch('/api/delivery?key=' + encodeURIComponent(key));
+    if (!r.ok) return;
+    const d = await r.json();
+    const reg = d.registration;
+    if (reg) {
+      document.getElementById('del-email').value = reg.email || '';
+      document.getElementById('del-webhook').value = reg.webhook || '';
+      if (reg.filters?.keywords?.length) document.getElementById('kw').value = reg.filters.keywords.join(', ');
+    }
+  } catch {}
+}
+
+async function saveDelivery() {
+  const key = getKey();
+  const msg = document.getElementById('del-msg');
+  const btn = document.getElementById('del-save');
+  const email = document.getElementById('del-email').value.trim();
+  const webhook = document.getElementById('del-webhook').value.trim();
+  const secret = document.getElementById('del-secret').value.trim();
+  const kw = document.getElementById('kw').value.trim();
+  const srcs = selectedSources();
+  if (!email && !webhook) { msg.className = 'status-msg err'; msg.textContent = 'add an email and/or webhook'; return; }
+  btn.disabled = true; btn.textContent = 'saving…';
+  try {
+    const body = { license_key: key };
+    if (email) body.email = email;
+    if (webhook) body.webhook = webhook;
+    if (secret) body.webhook_secret = secret;
+    if (kw) body.keywords = kw.split(',').map(s => s.trim()).filter(Boolean);
+    if (srcs.length && srcs.length < SOURCES.length) body.sources = srcs;
+    const r = await fetch('/api/delivery', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    });
+    const d = await r.json();
+    if (!r.ok) { msg.className = 'status-msg err'; msg.textContent = d.detail || d.error || 'failed'; return; }
+    msg.className = 'status-msg ok';
+    msg.textContent = 'Delivery saved. You\'ll get the next digest automatically.';
+  } catch (e) {
+    msg.className = 'status-msg err'; msg.textContent = 'save failed';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Save delivery';
+  }
+}
+
+async function removeDelivery() {
+  const key = getKey();
+  const msg = document.getElementById('del-msg');
+  try {
+    await fetch('/api/delivery?key=' + encodeURIComponent(key), { method: 'DELETE' });
+    document.getElementById('del-email').value = '';
+    document.getElementById('del-webhook').value = '';
+    document.getElementById('del-secret').value = '';
+    msg.className = 'status-msg ok'; msg.textContent = 'Delivery removed.';
+  } catch {
+    msg.className = 'status-msg err'; msg.textContent = 'remove failed';
+  }
+}
+
+async function initPremium() {
+  await loadConfig();
+  const key = getKey();
+  if (key) {
+    document.getElementById('license-key').value = key;
+    await unlock();
+  }
+}
+
 loadLatest();
+initPremium();
 </script>
 
 </body>

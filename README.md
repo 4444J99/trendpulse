@@ -11,11 +11,23 @@ get email + custom filters + webhook delivery.
 ## API
 
 ```
-GET  /api/digest/latest    — Today's full digest
-GET  /api/digest/history   — Last 30 daily digests
-POST /api/run-now          — Manual trigger (30-min rate limit)
-GET  /api/status           — System health
+GET  /api/digest/latest    — Today's full digest                    (free)
+GET  /api/digest/history   — Last 30 daily digests                  (free)
+POST /api/run-now          — Manual trigger (30-min rate limit)     (free)
+GET  /api/status           — System health                         (free)
+GET  /api/config           — Public config (checkout link, flags)  (free)
+
+POST   /api/license/check  — Validate a Lemon Squeezy license key   (premium)
+GET    /api/digest/custom  — Keyword/source-filtered digest         (premium)
+GET    /api/delivery       — View your delivery registration        (premium)
+POST   /api/delivery       — Register webhook/email delivery        (premium)
+DELETE /api/delivery       — Remove your delivery registration      (premium)
 ```
+
+Premium endpoints require an **active Lemon Squeezy subscription**. Pass the
+license key as `Authorization: Bearer <key>`, an `X-License-Key` header, a
+`?key=` query param, or a `license_key` body field. Without a valid key they
+return **402 Payment Required** with the checkout link.
 
 ## Sources
 
@@ -32,8 +44,25 @@ GET  /api/status           — System health
 | Pro   | $29/mo   | Daily email + custom filters + history search |
 | Team  | $99/mo   | 5 seats + webhook delivery + custom sources   |
 
-**Pay any rail:** GitHub Sponsors, crypto, BMC, latent Stripe.
-See [`/api/rails`](https://vulnpulse.ivixivi.workers.dev/api/rails) for the canonical operator rail registry.
+Subscriptions are billed via **Lemon Squeezy** (merchant of record — handles
+tax/VAT). On checkout the subscriber receives a **license key**; pasting it into
+the landing page or sending it on the premium API unlocks custom filtering and
+custom delivery. The key's status tracks the subscription, so cancellations and
+expirations re-lock access automatically.
+
+### Going live
+
+1. In Lemon Squeezy, create a subscription product with two variants (`Pro`,
+   `Team`) and enable **License keys** on it.
+2. Set the checkout link: `CHECKOUT_URL` in `wrangler.toml` →
+   `https://<store>.lemonsqueezy.com/buy/<variant-uuid>`.
+3. (Optional) Enable email delivery: `wrangler secret put RESEND_API_KEY` and
+   set `FROM_EMAIL`. Webhook delivery (Team) needs no provider.
+4. `wrangler deploy`.
+
+License validation hits the public Lemon Squeezy license API and needs **no API
+secret** — the license key itself is the credential. Results are cached in KV
+for 10 minutes.
 
 ## Stack
 
