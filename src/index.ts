@@ -11,7 +11,7 @@
  *   - Reddit /r/MachineLearning, /r/programming
  */
 
-interface Env {
+export interface Env {
   AI: any;
   ASSETS: Fetcher;
   TP_DATA: KVNamespace;
@@ -24,9 +24,9 @@ interface Env {
   FROM_EMAIL?: string;          // e.g. "TrendPulse <digest@yourdomain.com>"
 }
 
-type Source = 'hn' | 'github' | 'arxiv' | 'reddit-ml' | 'reddit-prog';
+export type Source = 'hn' | 'github' | 'arxiv' | 'reddit-ml' | 'reddit-prog';
 
-interface Item {
+export interface Item {
   source: Source;
   title: string;
   url: string;
@@ -36,7 +36,7 @@ interface Item {
   summary?: string;
 }
 
-interface Digest {
+export interface Digest {
   generated_at: string;
   date_label: string;       // YYYY-MM-DD
   themes: { name: string; rationale: string; example_titles: string[]; signal_strength: 'rising' | 'steady' | 'spike' }[];
@@ -168,7 +168,7 @@ function paywall(env: Env, lic: LicenseResult, needed: Tier = 'pro'): Response {
   }, { status: 402 });   // 402 Payment Required
 }
 
-function tierMeets(have: Tier, need: Tier): boolean {
+export function tierMeets(have: Tier, need: Tier): boolean {
   const rank: Record<Tier, number> = { free: 0, pro: 1, team: 2 };
   return rank[have] >= rank[need];
 }
@@ -311,7 +311,7 @@ Prioritize: emerging tech, business model shifts, regulatory signals, market pos
 
 Return ONLY JSON.`;
 
-function tryParseJson(s: unknown): any | null {
+export function tryParseJson(s: unknown): any | null {
   if (s == null) return null;
   if (typeof s === 'object') return s;
   const str = typeof s === 'string' ? s : String(s);
@@ -396,7 +396,7 @@ async function getLatestRaw(env: Env): Promise<Record<string, Item[]> | null> {
 
 interface CustomFilters { keywords: string[]; sources: Source[] }
 
-function parseFilters(params: URLSearchParams): CustomFilters {
+export function parseFilters(params: URLSearchParams): CustomFilters {
   const keywords = (params.get('keywords') ?? '')
     .split(',').map(s => s.trim().toLowerCase()).filter(Boolean).slice(0, 20);
   const reqSources = (params.get('sources') ?? '')
@@ -405,7 +405,7 @@ function parseFilters(params: URLSearchParams): CustomFilters {
   return { keywords, sources: sources.length ? sources : ALL_SOURCES };
 }
 
-function applyFilters(raw: Record<string, Item[]>, f: CustomFilters): Record<string, Item[]> {
+export function applyFilters(raw: Record<string, Item[]>, f: CustomFilters): Record<string, Item[]> {
   const out: Record<string, Item[]> = {};
   for (const [src, list] of Object.entries(raw)) {
     if (!f.sources.includes(src as Source)) continue;
@@ -470,7 +470,7 @@ async function readBody(req: Request): Promise<any> {
   return {};
 }
 
-function validWebhookUrl(u: string): boolean {
+export function validWebhookUrl(u: string): boolean {
   try {
     const parsed = new URL(u);
     return (parsed.protocol === 'https:' || parsed.protocol === 'http:') && !!parsed.hostname;
@@ -544,7 +544,7 @@ async function hmacHex(secret: string, message: string): Promise<string> {
   return [...new Uint8Array(sig)].map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-function digestToHtml(d: Digest): string {
+export function digestToHtml(d: Digest): string {
   const themes = (d.themes ?? []).map(t =>
     `<li><strong>${escapeHtmlServer(t.name)}</strong> <em>(${escapeHtmlServer(t.signal_strength ?? 'steady')})</em><br>${escapeHtmlServer(t.rationale ?? '')}</li>`
   ).join('');
