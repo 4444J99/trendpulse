@@ -70,6 +70,20 @@ for 10 minutes.
 - Cloudflare Workers AI — Llama 3.3 70B for theme synthesis
 - Cloudflare KV — raw items + daily digest archive
 
+## Development
+
+```
+npm install        # install toolchain (TypeScript, ESLint, Vitest, Wrangler)
+npm run lint       # ESLint
+npm run typecheck  # tsc --noEmit
+npm test           # Vitest unit tests
+npm run build      # wrangler deploy --dry-run (bundle check, no deploy)
+npx wrangler dev   # run locally
+```
+
+CI runs lint + typecheck + test + build on every pull request and on pushes to
+`main` (see [`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+
 ## Sister products
 
 TrendPulse is part of an intelligence portfolio:

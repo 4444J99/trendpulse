@@ -92,7 +92,7 @@ async function sha256Hex(s: string): Promise<string> {
 
 // Map a Lemon Squeezy variant name to an internal tier. Anything active is at
 // least Pro; variants mentioning "team" unlock Team-only features (webhooks).
-function tierFromVariant(variantName: unknown): Tier {
+export function tierFromVariant(variantName: unknown): Tier {
   const v = String(variantName ?? '').toLowerCase();
   if (v.includes('team') || v.includes('enterprise') || v.includes('business')) return 'team';
   return 'pro';
@@ -144,7 +144,7 @@ async function validateLicense(env: Env, rawKey: string | null | undefined): Pro
 
 // Pull a license key from the request: Authorization: Bearer, X-License-Key
 // header, ?key= query param, or a JSON/form body field `license_key`.
-function licenseFromRequest(req: Request, url: URL, body?: any): string | null {
+export function licenseFromRequest(req: Request, url: URL, body?: any): string | null {
   const auth = req.headers.get('Authorization');
   if (auth && /^Bearer\s+/i.test(auth)) return auth.replace(/^Bearer\s+/i, '').trim();
   const hdr = req.headers.get('X-License-Key');
@@ -554,7 +554,7 @@ export function digestToHtml(d: Digest): string {
 <p style="color:#888;font-size:12px">Generated ${escapeHtmlServer(d.generated_at ?? '')}</p>`;
 }
 
-function escapeHtmlServer(s: unknown): string {
+export function escapeHtmlServer(s: unknown): string {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 }
 
