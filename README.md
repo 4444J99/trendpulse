@@ -14,8 +14,9 @@ get email + custom filters + webhook delivery.
 GET  /api/digest/latest    — Today's full digest                    (free)
 GET  /api/digest/history   — Last 30 daily digests                  (free)
 POST /api/run-now          — Manual trigger (30-min rate limit)     (free)
-GET  /api/status           — System health                         (free)
+GET  /api/status           — System health + usage metrics         (free)
 GET  /api/config           — Public config (checkout link, flags)  (free)
+GET  /dashboard            — Minimal status/usage dashboard        (free)
 
 POST   /api/license/check  — Validate a Lemon Squeezy license key   (premium)
 GET    /api/digest/custom  — Keyword/source-filtered digest         (premium)
