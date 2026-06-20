@@ -284,11 +284,23 @@ describe('public Worker API', () => {
     });
 
     const status = await fetchWorker(env, '/api/status');
-    assert.deepEqual(await readJson(status), {
-      name: 'TrendPulse',
-      last_collections: [],
-      has_latest_digest: false,
-    });
+    const statusBody = await readJson(status);
+    assert.equal(statusBody.name, 'TrendPulse');
+    assert.equal(statusBody.status, 'initializing');
+    assert.equal(statusBody.digest.has_latest, false);
+    assert.equal(statusBody.digest.history_count, 0);
+    assert.deepEqual(statusBody.collection.recent_collections, []);
+    assert.equal(statusBody.usage.delivery_registrations, 0);
+    assert.equal(statusBody.usage.custom_digest_caches, 0);
+    assert.equal(statusBody.config.premium_enabled, true);
+    assert.equal(statusBody.config.email_delivery_enabled, false);
+
+    const dashboard = await fetchWorker(env, '/dashboard');
+    assert.equal(dashboard.status, 200);
+    assert.match(dashboard.headers.get('Content-Type'), /text\/html/);
+    const dashboardHtml = await dashboard.text();
+    assert.match(dashboardHtml, /Status Dashboard/);
+    assert.match(dashboardHtml, /Delivery registrations/);
 
     const fallback = await fetchWorker(env, '/not-an-api-route');
     assert.equal(await fallback.text(), 'asset fallback');
@@ -297,10 +309,18 @@ describe('public Worker API', () => {
 
   it('returns the latest digest and sorted history', async () => {
     const env = makeEnv();
+    const manualRunStartedAt = Date.now();
+    await env.TP_DATA.put('raw:2026-06-19T08:00:00.000Z', JSON.stringify({ hn: [] }));
+    await env.TP_DATA.put('raw:2026-06-19T12:00:00.000Z', JSON.stringify({ hn: [item('hn', 'Latest collection item')] }));
+    await env.TP_DATA.put('delivery:abc123', JSON.stringify({ email: 'ops@example.test' }));
+    await env.TP_DATA.put('last_manual_run', String(manualRunStartedAt));
+    const latestDigest = digest('2026-06-19', 'Newest digest');
+    latestDigest.generated_at = new Date().toISOString();
     await env.TP_DIGEST.put('digest:2026-06-17', JSON.stringify(digest('2026-06-17')));
     await env.TP_DIGEST.put('digest:2026-06-19', JSON.stringify(digest('2026-06-19')));
-    await env.TP_DIGEST.put('digest:latest', JSON.stringify(digest('2026-06-19', 'Newest digest')));
+    await env.TP_DIGEST.put('digest:latest', JSON.stringify(latestDigest));
     await env.TP_DIGEST.put('digest:bad', 'not json');
+    await env.TP_DIGEST.put('custom:2026-06-19:abc123', JSON.stringify(digest('2026-06-19', 'Custom digest')));
 
     const latest = await fetchWorker(env, '/api/digest/latest');
     assert.equal(latest.status, 200);
@@ -310,6 +330,26 @@ describe('public Worker API', () => {
     const body = await readJson(history);
     assert.equal(body.count, 2);
     assert.deepEqual(body.digests.map((d) => d.date_label), ['2026-06-19', '2026-06-17']);
+
+    const status = await fetchWorker(env, '/api/status');
+    const statusBody = await readJson(status);
+    assert.equal(statusBody.status, 'healthy');
+    assert.equal(statusBody.digest.has_latest, true);
+    assert.equal(statusBody.digest.latest_date, '2026-06-19');
+    assert.equal(statusBody.digest.latest_generated_at, latestDigest.generated_at);
+    assert.equal(statusBody.digest.theme_count, 0);
+    assert.deepEqual(statusBody.digest.source_counts, { hn: 1 });
+    assert.equal(statusBody.digest.history_count, 2);
+    assert.equal(statusBody.collection.raw_collection_count, 2);
+    assert.equal(statusBody.collection.last_collection_at, '2026-06-19T12:00:00.000Z');
+    assert.deepEqual(statusBody.collection.recent_collections, [
+      '2026-06-19T12:00:00.000Z',
+      '2026-06-19T08:00:00.000Z',
+    ]);
+    assert.equal(statusBody.usage.delivery_registrations, 1);
+    assert.equal(statusBody.usage.custom_digest_caches, 1);
+    assert.equal(statusBody.operations.manual_run_last_at, new Date(manualRunStartedAt).toISOString());
+    assert.equal(statusBody.operations.manual_run_cooldown_seconds > 0, true);
   });
 });
 

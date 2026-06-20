@@ -75,7 +75,7 @@ input::placeholder{color:#5a6678}
   <p><code>GET /api/digest/latest</code> — the most recent digest as JSON</p>
   <p><code>GET /api/digest/history</code> — last 30 daily digests</p>
   <p><code>POST /api/run-now</code> — trigger collection now (30-min rate limit)</p>
-  <p><code>GET /api/status</code> — system health</p>
+  <p><code>GET /api/status</code> — system health + usage metrics (<a href="/dashboard">dashboard</a>)</p>
 </section>
 
 <section>
@@ -166,7 +166,7 @@ input::placeholder{color:#5a6678}
 </section>
 
 <footer>
-  <p>TrendPulse • <a href="/api/digest/latest">latest API</a> • Sources: HN, GitHub, arxiv cs.AI, Reddit /r/MachineLearning + /r/programming</p>
+  <p>TrendPulse • <a href="/api/digest/latest">latest API</a> • <a href="/dashboard">dashboard</a> • Sources: HN, GitHub, arxiv cs.AI, Reddit /r/MachineLearning + /r/programming</p>
   <p style="margin-top:10px">Sister products:</p>
   <div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:6px">
     <a style="background:var(--card);border:1px solid var(--border);padding:4px 10px;border-radius:14px;font-size:12px;text-decoration:none" href="https://promptscope.ivixivi.workers.dev">PromptScope</a>
