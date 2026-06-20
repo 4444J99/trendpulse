@@ -62,7 +62,9 @@ expirations re-lock access automatically.
 
 License validation hits the public Lemon Squeezy license API and needs **no API
 secret** — the license key itself is the credential. Results are cached in KV
-for 10 minutes.
+for 10 minutes. Delivery registrations keep the license key in server-side KV so
+each scheduled email/webhook push can re-check that the subscription is still
+active; `/api/delivery` redacts that key from responses.
 
 ## Stack
 

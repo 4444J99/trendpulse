@@ -131,66 +131,70 @@ function stubLicenseFetch(options = {}) {
   return fetchMock;
 }
 
+function collectionResponse(url) {
+  if (url === 'https://hacker-news.firebaseio.com/v0/topstories.json') {
+    return Response.json([101, 102]);
+  }
+  if (url === 'https://hacker-news.firebaseio.com/v0/item/101.json') {
+    return Response.json({
+      title: 'Agent platforms reach production',
+      url: 'https://news.example.test/agents',
+      score: 120,
+      descendants: 34,
+    });
+  }
+  if (url === 'https://hacker-news.firebaseio.com/v0/item/102.json') {
+    return Response.json({ deleted: true });
+  }
+  if (url.startsWith('https://api.github.com/search/repositories')) {
+    return Response.json({
+      items: [{
+        full_name: 'org/agent-runtime',
+        description: 'Open source runtime for AI agents',
+        html_url: 'https://github.com/org/agent-runtime',
+        stargazers_count: 420,
+      }],
+    });
+  }
+  if (url.startsWith('https://export.arxiv.org/api/query')) {
+    return new Response(`
+      <feed>
+        <entry>
+          <title>Efficient agent planning for tool use</title>
+          <id>https://arxiv.org/abs/2606.00001</id>
+          <summary>Methods for production agent planning.</summary>
+        </entry>
+      </feed>
+    `);
+  }
+  if (url.startsWith('https://www.reddit.com/r/MachineLearning')) {
+    return new Response(`
+      <feed>
+        <entry>
+          <title><![CDATA[Agent benchmarks discussion]]></title>
+          <link href="https://reddit.example.test/r/MachineLearning/agent-benchmarks"/>
+        </entry>
+      </feed>
+    `);
+  }
+  if (url.startsWith('https://www.reddit.com/r/programming')) {
+    return new Response(`
+      <feed>
+        <entry>
+          <title>Tool calling frameworks in production</title>
+          <link href="https://reddit.example.test/r/programming/tool-calling"/>
+        </entry>
+      </feed>
+    `);
+  }
+  return null;
+}
+
 function stubCollectionFetch() {
   const fetchMock = spy(async (input) => {
     const url = String(input);
-
-    if (url === 'https://hacker-news.firebaseio.com/v0/topstories.json') {
-      return Response.json([101, 102]);
-    }
-    if (url === 'https://hacker-news.firebaseio.com/v0/item/101.json') {
-      return Response.json({
-        title: 'Agent platforms reach production',
-        url: 'https://news.example.test/agents',
-        score: 120,
-        descendants: 34,
-      });
-    }
-    if (url === 'https://hacker-news.firebaseio.com/v0/item/102.json') {
-      return Response.json({ deleted: true });
-    }
-    if (url.startsWith('https://api.github.com/search/repositories')) {
-      return Response.json({
-        items: [{
-          full_name: 'org/agent-runtime',
-          description: 'Open source runtime for AI agents',
-          html_url: 'https://github.com/org/agent-runtime',
-          stargazers_count: 420,
-        }],
-      });
-    }
-    if (url.startsWith('https://export.arxiv.org/api/query')) {
-      return new Response(`
-        <feed>
-          <entry>
-            <title>Efficient agent planning for tool use</title>
-            <id>https://arxiv.org/abs/2606.00001</id>
-            <summary>Methods for production agent planning.</summary>
-          </entry>
-        </feed>
-      `);
-    }
-    if (url.startsWith('https://www.reddit.com/r/MachineLearning')) {
-      return new Response(`
-        <feed>
-          <entry>
-            <title><![CDATA[Agent benchmarks discussion]]></title>
-            <link href="https://reddit.example.test/r/MachineLearning/agent-benchmarks"/>
-          </entry>
-        </feed>
-      `);
-    }
-    if (url.startsWith('https://www.reddit.com/r/programming')) {
-      return new Response(`
-        <feed>
-          <entry>
-            <title>Tool calling frameworks in production</title>
-            <link href="https://reddit.example.test/r/programming/tool-calling"/>
-          </entry>
-        </feed>
-      `);
-    }
-
+    const response = collectionResponse(url);
+    if (response) return response;
     throw new Error(`unexpected fetch: ${url}`);
   });
 
@@ -475,6 +479,70 @@ describe('license and premium routes', () => {
     const after = await fetchWorker(env, '/api/delivery?key=team-key');
     assert.equal(after.status, 200);
     assert.equal((await readJson(after)).registration, null);
+  });
+
+  it('revalidates delivery registrations before cron sends', async () => {
+    const env = makeEnv({ RESEND_API_KEY: 'resend-secret' });
+    let licenseStatus = 'active';
+    const delivered = [];
+    const fetchMock = spy(async (input) => {
+      const url = String(input);
+      if (url === 'https://api.lemonsqueezy.com/v1/licenses/validate') {
+        return Response.json({
+          valid: licenseStatus === 'active',
+          license_key: { status: licenseStatus, expires_at: null },
+          meta: { variant_name: 'Team', customer_email: 'buyer@example.test' },
+          error: licenseStatus === 'active' ? undefined : `license ${licenseStatus}`,
+        });
+      }
+
+      const collection = collectionResponse(url);
+      if (collection) return collection;
+
+      if (url === 'https://api.resend.com/emails' || url === 'https://hooks.example.test/trendpulse') {
+        delivered.push(url);
+        return Response.json({ ok: true });
+      }
+
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    setFetch(fetchMock);
+
+    const saved = await fetchWorker(env, '/api/delivery', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        license_key: 'team-key',
+        email: 'ops@example.test',
+        webhook: 'https://hooks.example.test/trendpulse',
+      }),
+    });
+    assert.equal(saved.status, 200);
+
+    const read = await fetchWorker(env, '/api/delivery?key=team-key');
+    const registration = (await readJson(read)).registration;
+    assert.equal(registration.license_key, undefined);
+
+    for (const key of [...env.TP_DATA.store.keys()]) {
+      if (key.startsWith('lic:')) await env.TP_DATA.delete(key);
+    }
+    const activeRun = await fetchWorker(env, '/api/run-now', { method: 'POST' });
+    assert.equal(activeRun.status, 200);
+    assert.deepEqual(delivered.sort(), [
+      'https://api.resend.com/emails',
+      'https://hooks.example.test/trendpulse',
+    ]);
+
+    await env.TP_DATA.delete('last_manual_run');
+    for (const key of [...env.TP_DATA.store.keys()]) {
+      if (key.startsWith('lic:')) await env.TP_DATA.delete(key);
+    }
+    delivered.length = 0;
+    licenseStatus = 'expired';
+
+    const expiredRun = await fetchWorker(env, '/api/run-now', { method: 'POST' });
+    assert.equal(expiredRun.status, 200);
+    assert.deepEqual(delivered, []);
   });
 });
 
