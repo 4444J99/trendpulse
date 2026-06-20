@@ -522,6 +522,20 @@ async function getLatestRaw(env: Env): Promise<Record<string, Item[]> | null> {
 
 interface CustomFilters { keywords: string[]; sources: Source[] }
 
+interface HistorySearchParams {
+  query: string;
+  terms: string[];
+  limit: number;
+}
+
+interface HistorySearchResult {
+  date_label: string;
+  generated_at: string;
+  one_line: string;
+  source_counts: Record<string, number>;
+  matched_themes: Digest['themes'];
+}
+
 export function parseFilters(params: URLSearchParams): CustomFilters {
   const keywords = (params.get('keywords') ?? '')
     .split(',').map(s => s.trim().toLowerCase()).filter(Boolean).map(s => s.slice(0, MAX_KEYWORD_CHARS)).slice(0, 20);
@@ -544,6 +558,94 @@ export function applyFilters(raw: Record<string, Item[]>, f: CustomFilters): Rec
     if (filtered.length) out[src] = filtered;
   }
   return out;
+}
+
+function normalizeSearchText(raw: unknown): string {
+  return String(raw ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+export function normalizeSearchQuery(raw: unknown): string {
+  return normalizeSearchText(raw).slice(0, 120);
+}
+
+export function parseHistorySearch(params: URLSearchParams): HistorySearchParams {
+  const query = normalizeSearchQuery(params.get('q') || params.get('query'));
+  const rawLimit = Number(params.get('limit') ?? '20');
+  const limit = Math.min(50, Math.max(1, Number.isFinite(rawLimit) ? Math.floor(rawLimit) : 20));
+  return { query, terms: query.split(' ').filter(Boolean).slice(0, 10), limit };
+}
+
+function textMatchesSearch(text: unknown, query: string, terms: string[]): boolean {
+  const haystack = normalizeSearchText(text);
+  return haystack.includes(query) || terms.every(term => haystack.includes(term));
+}
+
+function digestThemes(d: Digest): Digest['themes'] {
+  return Array.isArray(d.themes) ? d.themes : [];
+}
+
+function themeExampleTitles(t: Digest['themes'][number]): string[] {
+  return Array.isArray(t.example_titles) ? t.example_titles : [];
+}
+
+function themeSearchText(t: Digest['themes'][number]): string {
+  return [t.name, t.rationale, ...themeExampleTitles(t)].join(' ');
+}
+
+function digestSearchText(d: Digest): string {
+  return [
+    d.one_line,
+    ...digestThemes(d).map(themeSearchText),
+  ].join(' ');
+}
+
+export function digestMatchesSearch(d: Digest, query: string): boolean {
+  const normalized = normalizeSearchQuery(query);
+  if (!normalized) return false;
+  return textMatchesSearch(digestSearchText(d), normalized, normalized.split(' ').filter(Boolean));
+}
+
+function matchedThemes(d: Digest, search: HistorySearchParams): Digest['themes'] {
+  return digestThemes(d)
+    .filter(t => textMatchesSearch(themeSearchText(t), search.query, search.terms))
+    .slice(0, 5)
+    .map(t => ({ ...t, example_titles: themeExampleTitles(t).slice(0, 5) }));
+}
+
+async function listDigestArchiveKeys(env: Env): Promise<string[]> {
+  const keys: string[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await env.TP_DIGEST.list({ prefix: DIGEST_KEY_PREFIX, limit: 1000, cursor });
+    keys.push(...page.keys.map(k => k.name).filter(name => name !== LATEST_KEY));
+    cursor = page.cursor;
+  } while (cursor);
+  return keys;
+}
+
+async function searchDigestHistory(env: Env, search: HistorySearchParams): Promise<{ total_matches: number; results: HistorySearchResult[] }> {
+  const keys = await listDigestArchiveKeys(env);
+  const matches: HistorySearchResult[] = [];
+
+  for (const key of keys) {
+    const value = await env.TP_DIGEST.get(key);
+    if (!value) continue;
+    let digest: Digest;
+    try { digest = JSON.parse(value) as Digest; } catch { continue; }
+    if (!digest.date_label || !digest.generated_at) continue;
+    if (!textMatchesSearch(digestSearchText(digest), search.query, search.terms)) continue;
+
+    matches.push({
+      date_label: digest.date_label,
+      generated_at: digest.generated_at,
+      one_line: String(digest.one_line ?? ''),
+      source_counts: digest.source_counts ?? {},
+      matched_themes: matchedThemes(digest, search),
+    });
+  }
+
+  matches.sort((a, b) => b.date_label.localeCompare(a.date_label));
+  return { total_matches: matches.length, results: matches.slice(0, search.limit) };
 }
 
 // Build (and day-cache) a personalized digest for a given filter set.
@@ -578,6 +680,25 @@ async function handleCustomDigest(req: Request, env: Env, url: URL): Promise<Res
   const filters = parseFilters(url.searchParams);
   const digest = await buildCustomDigest(env, filters);
   return Response.json({ tier: lic.tier, ...digest });
+}
+
+async function handleDigestSearch(req: Request, env: Env, url: URL): Promise<Response> {
+  const lic = await validateLicense(env, licenseFromRequest(req, url));
+  if (!lic.valid) return paywall(env, lic, 'pro');
+
+  const search = parseHistorySearch(url.searchParams);
+  if (!search.query) {
+    return Response.json({ error: 'provide a search query with `q`' }, { status: 400 });
+  }
+
+  const { total_matches, results } = await searchDigestHistory(env, search);
+  return Response.json({
+    tier: lic.tier,
+    query: search.query,
+    count: results.length,
+    total_matches,
+    results,
+  });
 }
 
 // === Premium: custom delivery ===
@@ -955,6 +1076,10 @@ async function dispatchRequest(req: Request, env: Env): Promise<Response> {
   if (url.pathname === '/api/digest/custom') {
     assertMethod(req, ['GET']);
     return handleCustomDigest(req, env, url);
+  }
+  if (url.pathname === '/api/digest/search') {
+    assertMethod(req, ['GET']);
+    return handleDigestSearch(req, env, url);
   }
   if (url.pathname === '/api/delivery') {
     assertMethod(req, ['GET', 'POST', 'DELETE']);

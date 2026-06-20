@@ -6,6 +6,8 @@ import {
   tryParseJson,
   parseFilters,
   applyFilters,
+  normalizeSearchQuery,
+  digestMatchesSearch,
   validWebhookUrl,
   escapeHtmlServer,
 } from '../src/index';
@@ -108,6 +110,30 @@ describe('applyFilters', () => {
     expect(out.hn).toHaveLength(1);
     expect(out.hn[0].title).toBe('New LLM release');
     expect(out.arxiv).toBeUndefined();
+  });
+});
+
+describe('digestMatchesSearch', () => {
+  const digest = {
+    generated_at: '2026-06-19T13:00:00.000Z',
+    date_label: '2026-06-19',
+    one_line: 'Agent infrastructure spending is rising',
+    source_counts: {},
+    themes: [{
+      name: 'Runtime budgets',
+      rationale: 'Teams are optimizing inference and tool calls.',
+      example_titles: ['Agent runtime cost controls'],
+      signal_strength: 'rising' as const,
+    }],
+  };
+
+  it('normalizes whitespace and casing', () => {
+    expect(normalizeSearchQuery('  Agent   Runtime  ')).toBe('agent runtime');
+  });
+
+  it('matches digest headlines and themes', () => {
+    expect(digestMatchesSearch(digest, 'agent runtime')).toBe(true);
+    expect(digestMatchesSearch(digest, 'hardware')).toBe(false);
   });
 });
 
