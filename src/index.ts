@@ -77,6 +77,7 @@ interface LicenseResult {
 
 interface DeliveryRegistration {
   license_hash: string;
+  license_key?: string;             // stored server-side only so cron can re-check entitlement
   tier: Tier;
   email?: string;
   webhook?: string;
@@ -479,18 +480,23 @@ export function validWebhookUrl(u: string): boolean {
 
 async function handleDelivery(req: Request, env: Env, url: URL): Promise<Response> {
   const body = req.method === 'GET' ? undefined : await readBody(req);
-  const lic = await validateLicense(env, licenseFromRequest(req, url, body));
+  const licenseKey = (licenseFromRequest(req, url, body) ?? '').trim();
+  const lic = await validateLicense(env, licenseKey);
   if (!lic.valid) return paywall(env, lic, 'pro');
 
-  const hash = await sha256Hex((licenseFromRequest(req, url, body) ?? '').trim());
+  const hash = await sha256Hex(licenseKey);
   const kvKey = `${DELIVERY_PREFIX}${hash}`;
 
   if (req.method === 'GET') {
     const existing = await env.TP_DATA.get(kvKey);
+    let registration: Omit<DeliveryRegistration, 'license_key'> | null = null;
+    if (existing) {
+      try { registration = publicDeliveryRegistration(JSON.parse(existing) as DeliveryRegistration, lic.tier); } catch {}
+    }
     return Response.json({
       tier: lic.tier,
       email_delivery_available: !!env.RESEND_API_KEY,
-      registration: existing ? JSON.parse(existing) : null,
+      registration,
     });
   }
 
@@ -524,6 +530,7 @@ async function handleDelivery(req: Request, env: Env, url: URL): Promise<Respons
 
   const reg: DeliveryRegistration = {
     license_hash: hash,
+    license_key: licenseKey,
     tier: lic.tier,
     email,
     webhook,
@@ -533,6 +540,11 @@ async function handleDelivery(req: Request, env: Env, url: URL): Promise<Respons
   };
   await env.TP_DATA.put(kvKey, JSON.stringify(reg));
   return Response.json({ ok: true, registered: { email: !!email, webhook: !!webhook, filters: reg.filters ?? null }, tier: lic.tier });
+}
+
+function publicDeliveryRegistration(reg: DeliveryRegistration, currentTier: Tier): Omit<DeliveryRegistration, 'license_key'> {
+  const { license_key: _licenseKey, ...publicReg } = reg;
+  return { ...publicReg, tier: currentTier };
 }
 
 async function hmacHex(secret: string, message: string): Promise<string> {
@@ -607,6 +619,14 @@ async function deliverDigest(env: Env, standard: Digest): Promise<void> {
     if (!v) continue;
     let reg: DeliveryRegistration;
     try { reg = JSON.parse(v) as DeliveryRegistration; } catch { continue; }
+    if (!reg.license_key) { skipped++; continue; }
+
+    const lic = await validateLicense(env, reg.license_key);
+    if (!lic.valid) { skipped++; continue; }
+    if (reg.tier !== lic.tier) {
+      reg = { ...reg, tier: lic.tier };
+      await env.TP_DATA.put(k.name, JSON.stringify(reg));
+    }
 
     let digest = standard;
     if (reg.filters && (reg.filters.keywords?.length || reg.filters.sources?.length)) {
@@ -618,7 +638,7 @@ async function deliverDigest(env: Env, standard: Digest): Promise<void> {
     }
 
     const tasks: Promise<boolean>[] = [];
-    if (reg.webhook && tierMeets(reg.tier, 'team')) tasks.push(sendWebhook(env, reg, digest));
+    if (reg.webhook && tierMeets(lic.tier, 'team')) tasks.push(sendWebhook(env, reg, digest));
     if (reg.email) tasks.push(sendEmail(env, reg.email, digest));
     if (!tasks.length) { skipped++; continue; }
     const results = await Promise.allSettled(tasks);
