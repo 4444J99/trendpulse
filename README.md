@@ -14,9 +14,8 @@ get email + custom filters + webhook delivery.
 GET  /api/digest/latest    — Today's full digest                    (free)
 GET  /api/digest/history   — Last 30 daily digests                  (free)
 POST /api/run-now          — Manual trigger (30-min rate limit)     (free)
-GET  /api/status           — System health + usage metrics         (free)
+GET  /api/status           — System health                         (free)
 GET  /api/config           — Public config (checkout link, flags)  (free)
-GET  /dashboard            — Minimal status/usage dashboard        (free)
 
 POST   /api/license/check  — Validate a Lemon Squeezy license key   (premium)
 GET    /api/digest/custom  — Keyword/source-filtered digest         (premium)
@@ -63,9 +62,7 @@ expirations re-lock access automatically.
 
 License validation hits the public Lemon Squeezy license API and needs **no API
 secret** — the license key itself is the credential. Results are cached in KV
-for 10 minutes. Delivery registrations keep the license key in server-side KV so
-each scheduled email/webhook push can re-check that the subscription is still
-active; `/api/delivery` redacts that key from responses.
+for 10 minutes.
 
 ## Stack
 
