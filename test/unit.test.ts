@@ -116,6 +116,7 @@ describe('validWebhookUrl', () => {
     expect(validWebhookUrl('https://example.com/hook')).toBe(true);
     expect(validWebhookUrl('http://example.com')).toBe(true);
     expect(validWebhookUrl('ftp://example.com')).toBe(false);
+    expect(validWebhookUrl('https://user:pass@example.com/hook')).toBe(false);
     expect(validWebhookUrl('not a url')).toBe(false);
   });
 });

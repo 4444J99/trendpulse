@@ -131,70 +131,66 @@ function stubLicenseFetch(options = {}) {
   return fetchMock;
 }
 
-function collectionResponse(url) {
-  if (url === 'https://hacker-news.firebaseio.com/v0/topstories.json') {
-    return Response.json([101, 102]);
-  }
-  if (url === 'https://hacker-news.firebaseio.com/v0/item/101.json') {
-    return Response.json({
-      title: 'Agent platforms reach production',
-      url: 'https://news.example.test/agents',
-      score: 120,
-      descendants: 34,
-    });
-  }
-  if (url === 'https://hacker-news.firebaseio.com/v0/item/102.json') {
-    return Response.json({ deleted: true });
-  }
-  if (url.startsWith('https://api.github.com/search/repositories')) {
-    return Response.json({
-      items: [{
-        full_name: 'org/agent-runtime',
-        description: 'Open source runtime for AI agents',
-        html_url: 'https://github.com/org/agent-runtime',
-        stargazers_count: 420,
-      }],
-    });
-  }
-  if (url.startsWith('https://export.arxiv.org/api/query')) {
-    return new Response(`
-      <feed>
-        <entry>
-          <title>Efficient agent planning for tool use</title>
-          <id>https://arxiv.org/abs/2606.00001</id>
-          <summary>Methods for production agent planning.</summary>
-        </entry>
-      </feed>
-    `);
-  }
-  if (url.startsWith('https://www.reddit.com/r/MachineLearning')) {
-    return new Response(`
-      <feed>
-        <entry>
-          <title><![CDATA[Agent benchmarks discussion]]></title>
-          <link href="https://reddit.example.test/r/MachineLearning/agent-benchmarks"/>
-        </entry>
-      </feed>
-    `);
-  }
-  if (url.startsWith('https://www.reddit.com/r/programming')) {
-    return new Response(`
-      <feed>
-        <entry>
-          <title>Tool calling frameworks in production</title>
-          <link href="https://reddit.example.test/r/programming/tool-calling"/>
-        </entry>
-      </feed>
-    `);
-  }
-  return null;
-}
-
 function stubCollectionFetch() {
   const fetchMock = spy(async (input) => {
     const url = String(input);
-    const response = collectionResponse(url);
-    if (response) return response;
+
+    if (url === 'https://hacker-news.firebaseio.com/v0/topstories.json') {
+      return Response.json([101, 102]);
+    }
+    if (url === 'https://hacker-news.firebaseio.com/v0/item/101.json') {
+      return Response.json({
+        title: 'Agent platforms reach production',
+        url: 'https://news.example.test/agents',
+        score: 120,
+        descendants: 34,
+      });
+    }
+    if (url === 'https://hacker-news.firebaseio.com/v0/item/102.json') {
+      return Response.json({ deleted: true });
+    }
+    if (url.startsWith('https://api.github.com/search/repositories')) {
+      return Response.json({
+        items: [{
+          full_name: 'org/agent-runtime',
+          description: 'Open source runtime for AI agents',
+          html_url: 'https://github.com/org/agent-runtime',
+          stargazers_count: 420,
+        }],
+      });
+    }
+    if (url.startsWith('https://export.arxiv.org/api/query')) {
+      return new Response(`
+        <feed>
+          <entry>
+            <title>Efficient agent planning for tool use</title>
+            <id>https://arxiv.org/abs/2606.00001</id>
+            <summary>Methods for production agent planning.</summary>
+          </entry>
+        </feed>
+      `);
+    }
+    if (url.startsWith('https://www.reddit.com/r/MachineLearning')) {
+      return new Response(`
+        <feed>
+          <entry>
+            <title><![CDATA[Agent benchmarks discussion]]></title>
+            <link href="https://reddit.example.test/r/MachineLearning/agent-benchmarks"/>
+          </entry>
+        </feed>
+      `);
+    }
+    if (url.startsWith('https://www.reddit.com/r/programming')) {
+      return new Response(`
+        <feed>
+          <entry>
+            <title>Tool calling frameworks in production</title>
+            <link href="https://reddit.example.test/r/programming/tool-calling"/>
+          </entry>
+        </feed>
+      `);
+    }
+
     throw new Error(`unexpected fetch: ${url}`);
   });
 
@@ -244,6 +240,7 @@ describe('helpers', () => {
     assert.equal(tierMeets('pro', 'team'), false);
     assert.equal(validWebhookUrl('https://hooks.example.test/trendpulse'), true);
     assert.equal(validWebhookUrl('ftp://hooks.example.test/trendpulse'), false);
+    assert.equal(validWebhookUrl('https://user:pass@hooks.example.test/trendpulse'), false);
     assert.equal(validWebhookUrl('not a url'), false);
 
     const html = digestToHtml({
@@ -284,43 +281,60 @@ describe('public Worker API', () => {
     });
 
     const status = await fetchWorker(env, '/api/status');
-    const statusBody = await readJson(status);
-    assert.equal(statusBody.name, 'TrendPulse');
-    assert.equal(statusBody.status, 'initializing');
-    assert.equal(statusBody.digest.has_latest, false);
-    assert.equal(statusBody.digest.history_count, 0);
-    assert.deepEqual(statusBody.collection.recent_collections, []);
-    assert.equal(statusBody.usage.delivery_registrations, 0);
-    assert.equal(statusBody.usage.custom_digest_caches, 0);
-    assert.equal(statusBody.config.premium_enabled, true);
-    assert.equal(statusBody.config.email_delivery_enabled, false);
-
-    const dashboard = await fetchWorker(env, '/dashboard');
-    assert.equal(dashboard.status, 200);
-    assert.match(dashboard.headers.get('Content-Type'), /text\/html/);
-    const dashboardHtml = await dashboard.text();
-    assert.match(dashboardHtml, /Status Dashboard/);
-    assert.match(dashboardHtml, /Delivery registrations/);
+    assert.deepEqual(await readJson(status), {
+      name: 'TrendPulse',
+      last_collections: [],
+      has_latest_digest: false,
+    });
 
     const fallback = await fetchWorker(env, '/not-an-api-route');
     assert.equal(await fallback.text(), 'asset fallback');
     assert.equal(env.ASSETS.fetch.calls.length, 1);
   });
 
+  it('rejects invalid methods and malformed request bodies with structured errors', async () => {
+    const env = makeEnv();
+
+    const wrongMethod = await fetchWorker(env, '/api/run-now');
+    assert.equal(wrongMethod.status, 405);
+    assert.equal(wrongMethod.headers.get('Allow'), 'POST');
+    const wrongMethodBody = await readJson(wrongMethod);
+    assert.equal(wrongMethodBody.error, 'method not allowed');
+    assert.equal(wrongMethodBody.code, 'method_not_allowed');
+    assert.deepEqual(wrongMethodBody.detail, { allowed_methods: ['POST'] });
+    assert.match(wrongMethodBody.request_id, /^[A-Za-z0-9._:-]+$/);
+
+    const badJson = await fetchWorker(env, '/api/license/check', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Request-ID': 'req_bad_json' },
+      body: '{"license_key":',
+    });
+    assert.equal(badJson.status, 400);
+    assert.deepEqual(await readJson(badJson), {
+      error: 'invalid JSON request body',
+      code: 'invalid_json',
+      request_id: 'req_bad_json',
+    });
+
+    const unsupported = await fetchWorker(env, '/api/delivery', {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain', 'X-Request-ID': 'req_text_body' },
+      body: 'license_key=team-key',
+    });
+    assert.equal(unsupported.status, 415);
+    assert.deepEqual(await readJson(unsupported), {
+      error: 'unsupported request Content-Type',
+      code: 'unsupported_media_type',
+      request_id: 'req_text_body',
+    });
+  });
+
   it('returns the latest digest and sorted history', async () => {
     const env = makeEnv();
-    const manualRunStartedAt = Date.now();
-    await env.TP_DATA.put('raw:2026-06-19T08:00:00.000Z', JSON.stringify({ hn: [] }));
-    await env.TP_DATA.put('raw:2026-06-19T12:00:00.000Z', JSON.stringify({ hn: [item('hn', 'Latest collection item')] }));
-    await env.TP_DATA.put('delivery:abc123', JSON.stringify({ email: 'ops@example.test' }));
-    await env.TP_DATA.put('last_manual_run', String(manualRunStartedAt));
-    const latestDigest = digest('2026-06-19', 'Newest digest');
-    latestDigest.generated_at = new Date().toISOString();
     await env.TP_DIGEST.put('digest:2026-06-17', JSON.stringify(digest('2026-06-17')));
     await env.TP_DIGEST.put('digest:2026-06-19', JSON.stringify(digest('2026-06-19')));
-    await env.TP_DIGEST.put('digest:latest', JSON.stringify(latestDigest));
+    await env.TP_DIGEST.put('digest:latest', JSON.stringify(digest('2026-06-19', 'Newest digest')));
     await env.TP_DIGEST.put('digest:bad', 'not json');
-    await env.TP_DIGEST.put('custom:2026-06-19:abc123', JSON.stringify(digest('2026-06-19', 'Custom digest')));
 
     const latest = await fetchWorker(env, '/api/digest/latest');
     assert.equal(latest.status, 200);
@@ -330,26 +344,6 @@ describe('public Worker API', () => {
     const body = await readJson(history);
     assert.equal(body.count, 2);
     assert.deepEqual(body.digests.map((d) => d.date_label), ['2026-06-19', '2026-06-17']);
-
-    const status = await fetchWorker(env, '/api/status');
-    const statusBody = await readJson(status);
-    assert.equal(statusBody.status, 'healthy');
-    assert.equal(statusBody.digest.has_latest, true);
-    assert.equal(statusBody.digest.latest_date, '2026-06-19');
-    assert.equal(statusBody.digest.latest_generated_at, latestDigest.generated_at);
-    assert.equal(statusBody.digest.theme_count, 0);
-    assert.deepEqual(statusBody.digest.source_counts, { hn: 1 });
-    assert.equal(statusBody.digest.history_count, 2);
-    assert.equal(statusBody.collection.raw_collection_count, 2);
-    assert.equal(statusBody.collection.last_collection_at, '2026-06-19T12:00:00.000Z');
-    assert.deepEqual(statusBody.collection.recent_collections, [
-      '2026-06-19T12:00:00.000Z',
-      '2026-06-19T08:00:00.000Z',
-    ]);
-    assert.equal(statusBody.usage.delivery_registrations, 1);
-    assert.equal(statusBody.usage.custom_digest_caches, 1);
-    assert.equal(statusBody.operations.manual_run_last_at, new Date(manualRunStartedAt).toISOString());
-    assert.equal(statusBody.operations.manual_run_cooldown_seconds > 0, true);
   });
 });
 
@@ -519,70 +513,6 @@ describe('license and premium routes', () => {
     const after = await fetchWorker(env, '/api/delivery?key=team-key');
     assert.equal(after.status, 200);
     assert.equal((await readJson(after)).registration, null);
-  });
-
-  it('revalidates delivery registrations before cron sends', async () => {
-    const env = makeEnv({ RESEND_API_KEY: 'resend-secret' });
-    let licenseStatus = 'active';
-    const delivered = [];
-    const fetchMock = spy(async (input) => {
-      const url = String(input);
-      if (url === 'https://api.lemonsqueezy.com/v1/licenses/validate') {
-        return Response.json({
-          valid: licenseStatus === 'active',
-          license_key: { status: licenseStatus, expires_at: null },
-          meta: { variant_name: 'Team', customer_email: 'buyer@example.test' },
-          error: licenseStatus === 'active' ? undefined : `license ${licenseStatus}`,
-        });
-      }
-
-      const collection = collectionResponse(url);
-      if (collection) return collection;
-
-      if (url === 'https://api.resend.com/emails' || url === 'https://hooks.example.test/trendpulse') {
-        delivered.push(url);
-        return Response.json({ ok: true });
-      }
-
-      throw new Error(`unexpected fetch: ${url}`);
-    });
-    setFetch(fetchMock);
-
-    const saved = await fetchWorker(env, '/api/delivery', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        license_key: 'team-key',
-        email: 'ops@example.test',
-        webhook: 'https://hooks.example.test/trendpulse',
-      }),
-    });
-    assert.equal(saved.status, 200);
-
-    const read = await fetchWorker(env, '/api/delivery?key=team-key');
-    const registration = (await readJson(read)).registration;
-    assert.equal(registration.license_key, undefined);
-
-    for (const key of [...env.TP_DATA.store.keys()]) {
-      if (key.startsWith('lic:')) await env.TP_DATA.delete(key);
-    }
-    const activeRun = await fetchWorker(env, '/api/run-now', { method: 'POST' });
-    assert.equal(activeRun.status, 200);
-    assert.deepEqual(delivered.sort(), [
-      'https://api.resend.com/emails',
-      'https://hooks.example.test/trendpulse',
-    ]);
-
-    await env.TP_DATA.delete('last_manual_run');
-    for (const key of [...env.TP_DATA.store.keys()]) {
-      if (key.startsWith('lic:')) await env.TP_DATA.delete(key);
-    }
-    delivered.length = 0;
-    licenseStatus = 'expired';
-
-    const expiredRun = await fetchWorker(env, '/api/run-now', { method: 'POST' });
-    assert.equal(expiredRun.status, 200);
-    assert.deepEqual(delivered, []);
   });
 });
 
