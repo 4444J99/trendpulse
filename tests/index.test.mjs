@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 import worker, {
   applyFilters,
+  digestMatchesSearch,
   digestToHtml,
+  normalizeSearchQuery,
   parseFilters,
   tierMeets,
   tryParseJson,
@@ -235,6 +237,25 @@ describe('helpers', () => {
     });
   });
 
+  it('normalizes and matches historical digest search queries', () => {
+    const d = {
+      generated_at: '2026-06-19T13:00:00.000Z',
+      date_label: '2026-06-19',
+      one_line: 'Agent infrastructure spending is rising',
+      source_counts: {},
+      themes: [{
+        name: 'Runtime budgets',
+        rationale: 'Teams are optimizing inference and tool calls.',
+        example_titles: ['Agent runtime cost controls'],
+        signal_strength: 'rising',
+      }],
+    };
+
+    assert.equal(normalizeSearchQuery('  Agent   Runtime  '), 'agent runtime');
+    assert.equal(digestMatchesSearch(d, 'agent runtime'), true);
+    assert.equal(digestMatchesSearch(d, 'hardware'), false);
+  });
+
   it('checks tier ordering, webhook URLs, and HTML escaping', () => {
     assert.equal(tierMeets('team', 'pro'), true);
     assert.equal(tierMeets('pro', 'team'), false);
@@ -389,6 +410,10 @@ describe('license and premium routes', () => {
     const body = await readJson(custom);
     assert.match(body.error, /premium feature/);
     assert.equal(body.upgrade, 'https://checkout.example/trendpulse');
+
+    const search = await fetchWorker(env, '/api/digest/search?q=agents');
+    assert.equal(search.status, 402);
+    assert.match((await readJson(search)).error, /premium feature/);
   });
 
   it('builds and caches custom digests from the latest raw collection', async () => {
@@ -430,6 +455,53 @@ describe('license and premium routes', () => {
     assert.equal(cachedBody.one_line, 'Agent infrastructure is rising');
     assert.equal(cachedBody.matched, 2);
     assert.equal(env.AI.run.calls.length, 1);
+  });
+
+  it('searches historical digest archives for licensed subscribers', async () => {
+    const env = makeEnv();
+    stubLicenseFetch({ variantName: 'Pro' });
+
+    await env.TP_DIGEST.put('digest:2026-06-17', JSON.stringify({
+      generated_at: '2026-06-17T13:00:00.000Z',
+      date_label: '2026-06-17',
+      one_line: 'Agent infrastructure cost controls spread across teams',
+      source_counts: { hn: 2, github: 1 },
+      themes: [{
+        name: 'Agent runtime cost controls',
+        rationale: 'HN and GitHub both mention budget-aware agent infrastructure.',
+        example_titles: ['Agent infrastructure benchmarks'],
+        signal_strength: 'rising',
+      }],
+    }));
+    await env.TP_DIGEST.put('digest:2026-06-19', JSON.stringify({
+      generated_at: '2026-06-19T13:00:00.000Z',
+      date_label: '2026-06-19',
+      one_line: 'Inference efficiency dominates launch discussions',
+      source_counts: { arxiv: 1 },
+      themes: [{
+        name: 'Agent infrastructure hardens',
+        rationale: 'Production teams are moving from demos to owned runtime layers.',
+        example_titles: ['Production agent infrastructure checklist'],
+        signal_strength: 'steady',
+      }],
+    }));
+    await env.TP_DIGEST.put('digest:2026-06-18', JSON.stringify(digest('2026-06-18', 'Chip supply chains reset')));
+    await env.TP_DIGEST.put('digest:latest', JSON.stringify(digest('2026-06-19', 'Duplicate latest should be ignored')));
+    await env.TP_DIGEST.put('digest:bad', 'not json');
+
+    const missing = await fetchWorker(env, '/api/digest/search?key=pro-key');
+    assert.equal(missing.status, 400);
+    assert.deepEqual(await readJson(missing), { error: 'provide a search query with `q`' });
+
+    const resp = await fetchWorker(env, '/api/digest/search?key=pro-key&q=agent%20infrastructure&limit=1');
+    assert.equal(resp.status, 200);
+    const body = await readJson(resp);
+    assert.equal(body.tier, 'pro');
+    assert.equal(body.query, 'agent infrastructure');
+    assert.equal(body.count, 1);
+    assert.equal(body.total_matches, 2);
+    assert.equal(body.results[0].date_label, '2026-06-19');
+    assert.equal(body.results[0].matched_themes[0].name, 'Agent infrastructure hardens');
   });
 
   it('enforces delivery input and tier constraints', async () => {

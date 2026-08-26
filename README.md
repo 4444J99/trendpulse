@@ -19,6 +19,7 @@ GET  /api/config           — Public config (checkout link, flags)  (free)
 
 POST   /api/license/check  — Validate a Lemon Squeezy license key   (premium)
 GET    /api/digest/custom  — Keyword/source-filtered digest         (premium)
+GET    /api/digest/search  — Search archived digest themes          (premium)
 GET    /api/delivery       — View your delivery registration        (premium)
 POST   /api/delivery       — Register webhook/email delivery        (premium)
 DELETE /api/delivery       — Remove your delivery registration      (premium)
@@ -28,6 +29,9 @@ Premium endpoints require an **active Lemon Squeezy subscription**. Pass the
 license key as `Authorization: Bearer <key>`, an `X-License-Key` header, a
 `?key=` query param, or a `license_key` body field. Without a valid key they
 return **402 Payment Required** with the checkout link.
+
+Historical search accepts `q` (or `query`) and optional `limit` query params,
+for example `GET /api/digest/search?q=agent%20infra&limit=10&key=<license>`.
 
 ## Sources
 

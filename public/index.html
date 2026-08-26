@@ -143,6 +143,17 @@ input::placeholder{color:#5a6678}
     <div id="custom-out"></div>
   </div>
 
+  <div class="panel locked" id="history-panel">
+    <h3 style="font-size:16px">Historical search <span class="badge">pro</span></h3>
+    <label for="history-q">Search archived themes</label>
+    <input type="text" id="history-q" placeholder="agent infrastructure, inference costs, regulation" disabled>
+    <div class="row">
+      <button onclick="searchHistory()" id="history-btn" disabled>Search history</button>
+    </div>
+    <div id="history-msg" class="status-msg"></div>
+    <div id="history-out"></div>
+  </div>
+
   <div class="panel locked" id="delivery-panel">
     <h3 style="font-size:16px">Custom delivery <span class="badge">pro</span> / <span class="badge">team</span></h3>
     <p class="note" style="margin-top:0">Each new digest is pushed to your target(s), respecting the filters above.</p>
@@ -252,10 +263,10 @@ function setLockState(unlocked, tier) {
   const badge = document.getElementById('tier-badge');
   badge.textContent = currentTier;
   badge.className = 'badge' + (unlocked ? '' : ' free');
-  for (const pid of ['filter-panel', 'delivery-panel']) {
+  for (const pid of ['filter-panel', 'history-panel', 'delivery-panel']) {
     document.getElementById(pid).classList.toggle('locked', !unlocked);
   }
-  const ctrls = ['kw', 'custom-btn', 'del-email', 'del-secret', 'del-save', 'del-remove'];
+  const ctrls = ['kw', 'custom-btn', 'history-q', 'history-btn', 'del-email', 'del-secret', 'del-save', 'del-remove'];
   for (const id of ctrls) document.getElementById(id).disabled = !unlocked;
   document.querySelectorAll('.src-cb').forEach(cb => cb.disabled = !unlocked);
   // Webhook is Team-only.
@@ -326,6 +337,39 @@ async function getCustom() {
     msg.className = 'status-msg err'; msg.textContent = 'request failed';
   } finally {
     btn.disabled = false; btn.textContent = 'Get custom digest';
+  }
+}
+
+async function searchHistory() {
+  const key = getKey();
+  const msg = document.getElementById('history-msg');
+  const out = document.getElementById('history-out');
+  const btn = document.getElementById('history-btn');
+  const q = document.getElementById('history-q').value.trim();
+  if (!q) { msg.className = 'status-msg err'; msg.textContent = 'enter a search query'; return; }
+  btn.disabled = true; btn.textContent = 'searching…';
+  msg.textContent = ''; out.innerHTML = '';
+  try {
+    const qs = new URLSearchParams({ key, q, limit: '10' });
+    const r = await fetch('/api/digest/search?' + qs.toString());
+    const d = await r.json();
+    if (!r.ok) { msg.className = 'status-msg err'; msg.textContent = d.detail || d.error || 'failed'; return; }
+    out.innerHTML = (d.results || []).map(result => {
+      const themes = (result.matched_themes || []).map(t =>
+        `<div class="titles"><strong>${escapeHtml(t.name)}</strong><br>${escapeHtml(t.rationale || '')}</div>`
+      ).join('');
+      return `<div class="theme">
+        <h3>${escapeHtml(result.date_label)} <span class="signal steady">${escapeHtml(Object.values(result.source_counts || {}).reduce((a, b) => a + Number(b || 0), 0))} items</span></h3>
+        <p>${escapeHtml(result.one_line || '')}</p>
+        ${themes}
+      </div>`;
+    }).join('');
+    msg.className = 'status-msg ok';
+    msg.textContent = `${d.total_matches || 0} matching digest${d.total_matches === 1 ? '' : 's'}.`;
+  } catch (e) {
+    msg.className = 'status-msg err'; msg.textContent = 'search failed';
+  } finally {
+    btn.disabled = false; btn.textContent = 'Search history';
   }
 }
 
