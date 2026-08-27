@@ -265,16 +265,8 @@ describe('integration: main TrendPulse flow', () => {
     const status = await fetchWorker(env, '/api/status');
     expect(await readJson(status)).toMatchObject({
       name: 'TrendPulse',
-      status: 'healthy',
-      collection: {
-        raw_collection_count: 1,
-        last_collection_at: '2026-06-20T14:00:00.000Z',
-        recent_collections: ['2026-06-20T14:00:00.000Z'],
-      },
-      digest: {
-        has_latest: true,
-        latest_date: '2026-06-20',
-      },
+      has_latest_digest: true,
+      last_collections: ['2026-06-20T14:00:00.000Z'],
     });
 
     const rateLimited = await fetchWorker(env, '/api/run-now', { method: 'POST' });
