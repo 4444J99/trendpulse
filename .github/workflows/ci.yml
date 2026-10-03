@@ -26,12 +26,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
 
-      # No package-lock.json is committed, so use `npm install` (not `npm ci`)
-      # and skip setup-node's npm cache, which needs a lockfile to key on.
-      # Commit a lockfile and switch to `npm ci` for faster, reproducible runs.
+      # Install the exact dependency graph committed in package-lock.json.
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Lint
         run: npm run lint
