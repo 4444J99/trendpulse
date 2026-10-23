@@ -33,6 +33,8 @@ return **402 Payment Required** with the checkout link.
 Historical search accepts `q` (or `query`) and optional `limit` query params,
 for example `GET /api/digest/search?q=agent%20infra&limit=10&key=<license>`.
 
+`/api/status` and `/healthz` are quota-safe: see [docs/STATUS-QUOTA.md](docs/STATUS-QUOTA.md) for the snapshot model, staleness rules, and KV budget.
+
 ## Sources
 
 - Hacker News top stories
