@@ -387,4 +387,51 @@ describe('integration: main TrendPulse flow', () => {
     expect(await fallback.text()).toBe('asset fallback');
     expect(env.ASSETS.fetch.calls).toHaveLength(1);
   });
+
+  it('POST /internal/run-scheduled handles trend-digests named capability and returns structured receipt', async () => {
+    stubExternalFetch();
+    const env = makeEnv({
+      AI: {
+        run: spy(async () => ({
+          response: JSON.stringify(digestBody('Scheduled digest refresh is complete')),
+        })),
+      },
+    });
+
+    const res = await fetchWorker(env, '/internal/run-scheduled', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Scheduler-RID': 'test-run-tp' },
+      body: JSON.stringify({
+        scheduledTime: 1794103200000,
+        cron: '0 1,5,9,13,17,21 * * *',
+        target: 'trendpulse',
+        contractVersion: 2,
+        capability: 'trend-digests',
+        runId: 'trendpulse:test:1',
+      }),
+    });
+    expect(res.status).toBe(200);
+    const body = await readJson(res) as Record<string, unknown>;
+    expect(body.ok).toBe(true);
+    expect(body.state).toBe('completed');
+    expect(body.completedItems).toBe(1);
+    expect(body.pendingItems).toBe(0);
+    expect(body.details).toBeDefined();
+
+    // Rejects unsupported capability
+    const badCap = await fetchWorker(env, '/internal/run-scheduled', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ capability: 'bad-capability' }),
+    });
+    expect(badCap.status).toBe(400);
+
+    // Rejects invalid target
+    const badTarget = await fetchWorker(env, '/internal/run-scheduled', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target: 'other-target', capability: 'trend-digests' }),
+    });
+    expect(badTarget.status).toBe(400);
+  });
 });
