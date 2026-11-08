@@ -970,7 +970,16 @@ function handleConfig(env: Env): Response {
   });
 }
 
-async function runCron(env: Env) {
+export interface TrendCronResult {
+  completedItems: number;
+  pendingItems: number;
+  theme_count: number;
+  date_label: string;
+  source_counts: Record<string, number>;
+  last_checkpoint: string;
+}
+
+export async function runCron(env: Env): Promise<TrendCronResult> {
   const started = Date.now();
   logEvent('info', 'cron.start');
   const items = await collectAll(env);
@@ -990,6 +999,15 @@ async function runCron(env: Env) {
   // Push to paid subscribers' delivery targets (webhook / email).
   await deliverDigest(env, digest);
   logEvent('info', 'cron.complete', { duration_ms: Date.now() - started });
+
+  return {
+    completedItems: 1,
+    pendingItems: 0,
+    theme_count: digest.themes.length,
+    date_label: dateKey,
+    source_counts: digest.source_counts,
+    last_checkpoint: stamp,
+  };
 }
 
 // === HTTP ===
@@ -1042,12 +1060,53 @@ async function handleStatus(_req: Request, env: Env): Promise<Response> {
   });
 }
 
+async function handleRunScheduled(req: Request, env: Env): Promise<Response> {
+  const body = await req.json().catch(() => null) as Record<string, unknown> | null;
+  if (!body || typeof body !== 'object') {
+    return Response.json({ ok: false, error: 'invalid_json' }, { status: 400 });
+  }
+
+  if (body.target && body.target !== 'trendpulse') {
+    return Response.json({ ok: false, error: 'invalid_target' }, { status: 400 });
+  }
+  if (body.capability && body.capability !== 'trend-digests') {
+    return Response.json({ ok: false, error: 'unsupported_capability' }, { status: 400 });
+  }
+
+  try {
+    const outcome = await runCron(env);
+    return Response.json({
+      ok: true,
+      state: 'completed',
+      completedItems: outcome.completedItems,
+      pendingItems: outcome.pendingItems,
+      details: {
+        theme_count: outcome.theme_count,
+        date_label: outcome.date_label,
+        source_counts: outcome.source_counts,
+        last_checkpoint: outcome.last_checkpoint,
+      },
+    }, { status: 200 });
+  } catch (err: unknown) {
+    logError('run-scheduled.failed', err);
+    return Response.json({
+      ok: false,
+      error: 'execution_failed',
+      message: err instanceof Error ? err.message : String(err),
+    }, { status: 500 });
+  }
+}
+
 async function dispatchRequest(req: Request, env: Env): Promise<Response> {
   if (req.url.length > MAX_URL_LENGTH) {
     throw new HttpError(414, 'uri_too_long', 'request URL is too long');
   }
 
   const url = new URL(req.url);
+  if (url.pathname === '/internal/run-scheduled') {
+    assertMethod(req, ['POST']);
+    return handleRunScheduled(req, env);
+  }
   if (url.pathname === '/api/digest/latest') {
     assertMethod(req, ['GET']);
     return handleLatest(req, env);
