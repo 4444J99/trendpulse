@@ -10,9 +10,9 @@ binding = "ASSETS"
 [ai]
 binding = "AI"
 
-# Daily digest at 13:00 UTC; intra-day collection every 4 hours
+# OPS owns scheduled production work; deploy with the owner cutover.
 [triggers]
-crons = ["0 1,5,9,13,17,21 * * *"]
+crons = []
 
 [[kv_namespaces]]
 binding = "TP_DATA"

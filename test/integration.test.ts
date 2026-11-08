@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import worker, { type Digest, type Env } from '../src/index';
+import worker, { handleRunScheduled, type Digest, type Env } from '../src/index';
 
 type Spy<T extends (...args: any[]) => any> = T & { calls: Parameters<T>[] };
 
@@ -398,7 +398,7 @@ describe('integration: main TrendPulse flow', () => {
       },
     });
 
-    const res = await fetchWorker(env, '/internal/run-scheduled', {
+    const res = await handleRunScheduled(request('/internal/run-scheduled', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Scheduler-RID': 'test-run-tp' },
       body: JSON.stringify({
@@ -409,7 +409,7 @@ describe('integration: main TrendPulse flow', () => {
         capability: 'trend-digests',
         runId: 'trendpulse:test:1',
       }),
-    });
+    }), env);
     expect(res.status).toBe(200);
     const body = await readJson(res) as Record<string, unknown>;
     expect(body.ok).toBe(true);
@@ -419,19 +419,42 @@ describe('integration: main TrendPulse flow', () => {
     expect(body.details).toBeDefined();
 
     // Rejects unsupported capability
-    const badCap = await fetchWorker(env, '/internal/run-scheduled', {
+    const badCap = await handleRunScheduled(request('/internal/run-scheduled', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ capability: 'bad-capability' }),
-    });
+    }), env);
     expect(badCap.status).toBe(400);
 
     // Rejects invalid target
-    const badTarget = await fetchWorker(env, '/internal/run-scheduled', {
+    const badTarget = await handleRunScheduled(request('/internal/run-scheduled', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ target: 'other-target', capability: 'trend-digests' }),
-    });
+    }), env);
     expect(badTarget.status).toBe(400);
   });
+});
+
+it('public scheduler ingress refuses forged identity before effects', async () => {
+  const env = makeEnv();
+  const response = await fetchWorker(env, '/internal/run-scheduled', {
+    method:'POST', headers:{'X-Scheduler-RID':'forged'},
+    body:JSON.stringify({target:'forged', capability:'trend-digests'}),
+  });
+  expect(response.status).toBe(404);
+  expect(env.TP_DATA.store.size).toBe(0);
+  expect(env.AI.run.calls).toHaveLength(0);
+});
+
+it('private ingress requires explicit target and capability', async () => {
+  stubExternalFetch();
+  try {
+    for (const payload of [{capability:'trend-digests'}, {target:'trendpulse'}]) {
+      const env = makeEnv();
+      const response = await handleRunScheduled(request('/internal/run-scheduled', {method:'POST',body:JSON.stringify(payload)}), env);
+      expect(response.status).toBe(400);
+      expect(env.TP_DATA.store.size).toBe(0);
+    }
+  } finally {vi.unstubAllGlobals();}
 });

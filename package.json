@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "build": "wrangler deploy --dry-run --outdir dist"
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "test:ingress": "node scripts/test-scheduled-ingress.mjs"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260827.1",

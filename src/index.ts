@@ -1060,16 +1060,16 @@ async function handleStatus(_req: Request, env: Env): Promise<Response> {
   });
 }
 
-async function handleRunScheduled(req: Request, env: Env): Promise<Response> {
+export async function handleRunScheduled(req: Request, env: Env): Promise<Response> {
   const body = await req.json().catch(() => null) as Record<string, unknown> | null;
   if (!body || typeof body !== 'object') {
     return Response.json({ ok: false, error: 'invalid_json' }, { status: 400 });
   }
 
-  if (body.target && body.target !== 'trendpulse') {
+  if (body.target !== 'trendpulse') {
     return Response.json({ ok: false, error: 'invalid_target' }, { status: 400 });
   }
-  if (body.capability && body.capability !== 'trend-digests') {
+  if (body.capability !== 'trend-digests') {
     return Response.json({ ok: false, error: 'unsupported_capability' }, { status: 400 });
   }
 
@@ -1104,8 +1104,7 @@ async function dispatchRequest(req: Request, env: Env): Promise<Response> {
 
   const url = new URL(req.url);
   if (url.pathname === '/internal/run-scheduled') {
-    assertMethod(req, ['POST']);
-    return handleRunScheduled(req, env);
+    return new Response('Not Found', { status: 404 });
   }
   if (url.pathname === '/api/digest/latest') {
     assertMethod(req, ['GET']);
