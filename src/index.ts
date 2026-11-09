@@ -294,7 +294,7 @@ async function fetchHN(env: Env): Promise<Item[]> {
   const idsResp = await fetch('https://hacker-news.firebaseio.com/v0/topstories.json', {
     headers: { 'User-Agent': env.USER_AGENT },
   });
-  if (!idsResp.ok) return [];
+  if (!idsResp.ok) throw new Error('source_http_failed');
   const ids = (await idsResp.json() as number[]).slice(0, 30);
   const items: Item[] = [];
   for (const id of ids) {
@@ -302,7 +302,7 @@ async function fetchHN(env: Env): Promise<Item[]> {
       const r = await fetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json`, {
         headers: { 'User-Agent': env.USER_AGENT },
       });
-      if (!r.ok) continue;
+      if (!r.ok) throw new Error('source_item_failed');
       const it: any = await r.json();
       if (!it?.title) continue;
       items.push({
@@ -313,7 +313,7 @@ async function fetchHN(env: Env): Promise<Item[]> {
         comments: Number(it.descendants ?? 0),
         collected_at: new Date().toISOString(),
       });
-    } catch {}
+    } catch { throw new Error('source_item_failed'); }
   }
   return items;
 }
@@ -323,7 +323,7 @@ async function fetchGithubTrending(env: Env): Promise<Item[]> {
   const r = await fetch(`https://api.github.com/search/repositories?q=created:>${since}&sort=stars&order=desc&per_page=30`, {
     headers: { 'User-Agent': env.USER_AGENT, 'Accept': 'application/vnd.github+json' },
   });
-  if (!r.ok) return [];
+  if (!r.ok) throw new Error('source_http_failed');
   const data: any = await r.json();
   return (data.items ?? []).map((it: any): Item => ({
     source: 'github',
@@ -340,7 +340,7 @@ async function fetchArxiv(env: Env): Promise<Item[]> {
   const r = await fetch(url, {
     headers: { 'User-Agent': env.USER_AGENT, 'Accept': 'application/atom+xml' },
   });
-  if (!r.ok) return [];
+  if (!r.ok) throw new Error('source_http_failed');
   const xml = await r.text();
   const out: Item[] = [];
   const entries = xml.split('<entry>').slice(1, 26);
@@ -365,7 +365,7 @@ async function fetchReddit(env: Env, sub: string, source: Source): Promise<Item[
       'Accept': 'application/rss+xml,application/atom+xml',
     },
   });
-  if (!r.ok) return [];
+  if (!r.ok) throw new Error('source_http_failed');
   const xml = await r.text();
   const out: Item[] = [];
   // Reddit RSS uses Atom <entry> blocks
@@ -400,6 +400,8 @@ async function collectAll(env: Env): Promise<Record<string, Item[]>> {
       logError('collection.source_failed', result.reason, { source: sourceNames[index] });
     }
   });
+
+  if (results.some(result => result.status === 'rejected')) throw new Error('source_collection_incomplete');
 
   const [hn, gh, ax, rml, rprog] = results;
 
@@ -472,17 +474,12 @@ async function synthesizeDigest(items: Record<string, Item[]>, env: Env, focus?:
     });
   } catch (err) {
     logError('digest.inference_failed', err);
-    return {
-      generated_at: new Date().toISOString(),
-      date_label: new Date().toISOString().slice(0, 10),
-      themes: [],
-      one_line: 'inference failed; raw items below',
-      source_counts: countSources(items),
-    };
+    throw new Error('digest_inference_failed');
   }
 
   const raw = aiResp?.response ?? aiResp?.result ?? aiResp;
   const parsed = tryParseJson(raw);
+  if (!parsed || !Array.isArray(parsed.themes) || typeof parsed.one_line !== 'string' || !parsed.one_line.trim()) throw new Error('digest_invalid_response');
   logEvent('info', 'digest.ai_response', {
     raw_type: typeof raw,
     raw_chars: typeof raw === 'string' ? raw.length : JSON.stringify(raw ?? null).length,
@@ -915,7 +912,7 @@ async function sendEmail(env: Env, to: string, digest: Digest): Promise<boolean>
 // digest is built (and day-cached) for them.
 async function deliverDigest(env: Env, standard: Digest): Promise<void> {
   const list = await env.TP_DATA.list({ prefix: DELIVERY_PREFIX });
-  let delivered = 0, skipped = 0;
+  let delivered = 0, skipped = 0, failed = 0;
   for (const k of list.keys) {
     const v = await env.TP_DATA.get(k.name);
     if (!v) continue;
@@ -932,7 +929,8 @@ async function deliverDigest(env: Env, standard: Digest): Promise<void> {
         digest = await buildCustomDigest(env, f);
       } catch (err) {
         logError('delivery.custom_digest_failed', err);
-        digest = standard;
+        failed++;
+        continue;
       }
     }
 
@@ -941,9 +939,10 @@ async function deliverDigest(env: Env, standard: Digest): Promise<void> {
     if (reg.email) tasks.push(sendEmail(env, reg.email, digest));
     if (!tasks.length) { skipped++; continue; }
     const results = await Promise.allSettled(tasks);
-    if (results.some(r => r.status === 'fulfilled' && r.value)) delivered++; else skipped++;
+    if (results.every(r => r.status === 'fulfilled' && r.value)) delivered++; else failed++;
   }
-  logEvent('info', 'delivery.complete', { delivered, skipped });
+  logEvent('info', 'delivery.complete', { delivered, skipped, failed });
+  if (failed) throw new Error('digest_delivery_incomplete');
 }
 
 async function handleLicenseCheck(req: Request, env: Env, url: URL): Promise<Response> {

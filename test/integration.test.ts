@@ -458,3 +458,25 @@ it('private ingress requires explicit target and capability', async () => {
     }
   } finally {vi.unstubAllGlobals();}
 });
+
+it.each(['source', 'inference', 'delivery'])('scheduled receipt cannot complete with failed %s', async (failure) => {
+    const external = stubExternalFetch();
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL, init?: RequestInit) => {
+      if ((failure === 'source' && urlFromInput(input).includes('api.github.com')) ||
+          (failure === 'delivery' && urlFromInput(input).includes('delivery.example'))) {
+        return new Response('unavailable', {status:503});
+      }
+      return external(input, init);
+    });
+    const env = makeEnv({AI:{run:spy(async () => {
+      if (failure === 'inference') throw new Error('inference unavailable');
+      return {response:JSON.stringify(digestBody('Scheduled digest'))};
+    })}});
+    if (failure === 'delivery') await env.TP_DATA.put('delivery:test', JSON.stringify({tier:'team',webhook:'https://delivery.example/webhook'}));
+    try {
+      const response = await handleRunScheduled(request('/internal/run-scheduled', {method:'POST',body:JSON.stringify({target:'trendpulse',capability:'trend-digests'})}), env);
+      const body = await response.json() as {ok:boolean;state?:string};
+      expect(body.ok).toBe(false);
+      expect(body.state).not.toBe('completed');
+    } finally {vi.unstubAllGlobals();}
+});
