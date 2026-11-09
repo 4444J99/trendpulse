@@ -232,9 +232,9 @@ describe('integration: main TrendPulse flow', () => {
       email_delivery: false,
     });
 
-    const runNow = await fetchWorker(env, '/api/run-now', { method: 'POST' });
+    const runNow = await handleRunScheduled(request('/internal/run-scheduled', {method:'POST',body:JSON.stringify({target:'trendpulse',capability:'trend-digests'})}), env);
     expect(runNow.status).toBe(200);
-    const generated = await readJson<Digest>(runNow);
+    const generated = await readJson<Digest>(await fetchWorker(env, '/api/digest/latest'));
     expect(generated).toMatchObject({
       date_label: '2026-06-20',
       one_line: "Agent tooling is the day's cross-source theme",
@@ -270,8 +270,8 @@ describe('integration: main TrendPulse flow', () => {
     });
 
     const rateLimited = await fetchWorker(env, '/api/run-now', { method: 'POST' });
-    expect(rateLimited.status).toBe(429);
-    expect(await readJson(rateLimited)).toEqual({ error: 'manual rate limit; try later' });
+    expect(rateLimited.status).toBe(503);
+    expect(await readJson(rateLimited)).toEqual({ error: 'Manual collection is unavailable; digests update automatically.' });
 
     const license = await fetchWorker(env, '/api/license/check', {
       method: 'POST',
@@ -479,4 +479,14 @@ it.each(['source', 'inference', 'delivery'])('scheduled receipt cannot complete 
       expect(body.ok).toBe(false);
       expect(body.state).not.toBe('completed');
     } finally {vi.unstubAllGlobals();}
+});
+it('public manual refresh cannot execute collection outside admission accounting', async () => {
+ stubExternalFetch();
+ try {
+ const env=makeEnv();
+ const response=await fetchWorker(env,'/api/run-now',{method:'POST'});
+ expect(response.status).toBe(503);
+ expect(env.TP_DATA.store.size).toBe(0);
+ expect(env.TP_DIGEST.store.size).toBe(0);
+ } finally {vi.unstubAllGlobals();}
 });

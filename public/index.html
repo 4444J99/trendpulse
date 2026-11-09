@@ -67,14 +67,14 @@ input::placeholder{color:#5a6678}
 <section>
   <h2>Today's pulse</h2>
   <div id="latest" class="headline">loading…</div>
-  <div class="meta"><span id="generated-at">—</span><button onclick="runNow()" id="run-btn">Run now</button></div>
+  <div class="meta"><span id="generated-at">—</span><button onclick="refreshLatest()" id="run-btn">Refresh latest</button></div>
 </section>
 
 <section>
   <h2>API</h2>
   <p><code>GET /api/digest/latest</code> — the most recent digest as JSON</p>
   <p><code>GET /api/digest/history</code> — last 30 daily digests</p>
-  <p><code>POST /api/run-now</code> — trigger collection now (30-min rate limit)</p>
+  <p><code>GET /api/digest/latest</code> — read the newest scheduled digest</p>
   <p><code>GET /api/status</code> — system health</p>
 </section>
 
@@ -215,17 +215,11 @@ async function loadLatest() {
   }
 }
 
-async function runNow() {
+async function refreshLatest() {
   const btn = document.getElementById('run-btn');
-  btn.disabled = true; btn.textContent = 'collecting…';
-  try {
-    const r = await fetch('/api/run-now', { method: 'POST' });
-    const d = await r.json();
-    if (!r.ok) { alert(d.error || 'failed'); return; }
-    await loadLatest();
-  } finally {
-    btn.disabled = false; btn.textContent = 'Run now';
-  }
+  btn.disabled = true; btn.textContent = 'refreshing…';
+  try { await loadLatest(); }
+  finally { btn.disabled = false; btn.textContent = 'Refresh latest'; }
 }
 
 function escapeHtml(s) {

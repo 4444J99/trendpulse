@@ -1,3 +1,4 @@
+import type { ScheduledAuthority } from './scheduled-contract';
 /**
  * TrendPulse — continuous market/news research worker.
  *
@@ -11,7 +12,7 @@
  *   - Reddit /r/MachineLearning, /r/programming
  */
 
-export interface Env {
+export interface Env extends ScheduledAuthority {
   AI: any;
   ASSETS: Fetcher;
   TP_DATA: KVNamespace;
@@ -1016,7 +1017,7 @@ async function handleLatest(_req: Request, env: Env): Promise<Response> {
   if (!v) {
     return Response.json({
       message: 'no digest yet — first cron run produces it within hours',
-      hint: 'POST /api/run-now to trigger collection in the meantime (rate-limited)',
+      hint: 'Digests update automatically; check back after the next collection cycle.',
     }, { status: 202 });
   }
   return new Response(v, { headers: { 'Content-Type': 'application/json' } });
@@ -1036,17 +1037,8 @@ async function handleHistory(_req: Request, env: Env): Promise<Response> {
   });
 }
 
-async function handleRunNow(_req: Request, env: Env): Promise<Response> {
-  // Manual trigger — useful for first-run.
-  // Cheap rate-limit: only allow if we haven't run in last 30 min.
-  const key = 'last_manual_run';
-  const last = await env.TP_DATA.get(key);
-  if (last && Date.now() - Number(last) < 30 * 60 * 1000) {
-    return Response.json({ error: 'manual rate limit; try later' }, { status: 429 });
-  }
-  await env.TP_DATA.put(key, String(Date.now()), { expirationTtl: 60 * 60 });
-  await runCron(env);
-  return handleLatest(_req, env);
+async function handleRunNow(_req: Request, _env: Env): Promise<Response> {
+  return Response.json({ error: 'Manual collection is unavailable; digests update automatically.' }, {status:503});
 }
 
 async function handleStatus(_req: Request, env: Env): Promise<Response> {

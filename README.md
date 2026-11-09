@@ -13,7 +13,7 @@ get email + custom filters + webhook delivery.
 ```
 GET  /api/digest/latest    — Today's full digest                    (free)
 GET  /api/digest/history   — Last 30 daily digests                  (free)
-POST /api/run-now          — Manual trigger (30-min rate limit)     (free)
+POST /api/run-now          — Unavailable; collection runs on the admitted schedule
 GET  /api/status           — System health                         (free)
 GET  /api/config           — Public config (checkout link, flags)  (free)
 

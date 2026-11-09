@@ -38,3 +38,9 @@ CHECKOUT_URL = "https://trendpulse.lemonsqueezy.com/buy/REPLACE-WITH-VARIANT-ID"
 
 [observability]
 enabled = true
+
+# Invocation custody only; this binding cannot deploy or grant admission.
+[[services]]
+binding = "OPS_EXECUTION_AUTH"
+service = "ops-scheduler-production"
+entrypoint = "ExecutionAuthority"

@@ -1,3 +1,4 @@
+import { protectScheduledInvocation } from './scheduled-contract';
 import { WorkerEntrypoint } from 'cloudflare:workers';
 import { handleRunScheduled } from './index';
 import worker from './index';
@@ -16,6 +17,6 @@ export class ScheduledIngress extends WorkerEntrypoint<Parameters<typeof handleR
     if (new URL(request.url).pathname !== '/internal/run-scheduled') {
       return new Response('Not Found', { status: 404 });
     }
-    return handleRunScheduled(request, this.env);
+    return protectScheduledInvocation(request, this.env, 'trendpulse', 'trend-digests', () => handleRunScheduled(request, this.env));
   }
 }

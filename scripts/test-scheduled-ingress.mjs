@@ -4,8 +4,9 @@ const require = createRequire(import.meta.url);
 const { build } = require('esbuild');
 const { Miniflare, convertV4MiniflareOptions } = require('miniflare');
 const result = await build({entryPoints:['src/runtime.ts'],bundle:true,format:'esm',platform:'browser',external:['cloudflare:workers'],write:false});
+let effects = 0;
 const options = {workers:[
-  {name:'product',modules:true,script:result.outputFiles[0].text,compatibilityDate:'2026-04-01',compatibilityFlags:['nodejs_compat'],outboundService:()=>{throw Error('unexpected effect');}},
+  {name:'product',modules:true,script:result.outputFiles[0].text,compatibilityDate:'2026-04-01',compatibilityFlags:['nodejs_compat'],outboundService:()=>{effects++;throw Error('unexpected effect');}},
   {name:'caller',modules:true,script:`export default {fetch(request,env){return env.PRODUCT.fetch(request)}}`,compatibilityDate:'2026-04-01',serviceBindings:{PRODUCT:{name:'product',entrypoint:'ScheduledIngress'}}}
 ]};
 const mf = new Miniflare(convertV4MiniflareOptions ? convertV4MiniflareOptions(options) : options);
@@ -19,5 +20,8 @@ try {
  const response = await caller.fetch('https://internal/internal/run-scheduled',{method:'POST',body:JSON.stringify({target:'wrong',capability:'wrong'})});
  assert.equal(response.status,400);
  assert.equal((await caller.fetch('https://internal/health')).status,404);
+ const denied = await caller.fetch('https://internal/internal/run-scheduled',{method:'POST',body:JSON.stringify({target:'trendpulse',capability:'trend-digests',runId:'fixture',attempt:1,fencingToken:1,admissionGeneration:3,sourceSha:'a'.repeat(40),targetSourceSha:'b'.repeat(40),contractVersion:1})});
+ assert.equal(denied.status,503);
+ assert.equal(effects,0);
  console.log('workerd: public ingress denied; named binding reaches validation; unrelated paths denied');
 } finally {await mf.dispose();}
